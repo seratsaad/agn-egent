@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+external/
+data/runs/
+data/phase0/
+data/cache/
+scratch/
+*.DS_Store
+.DS_Store
+.claude/

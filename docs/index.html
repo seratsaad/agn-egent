@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AGN-Egent: agentic AGN spectral decomposition</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<style>
+  :root{ --ink:#1a1f29; --muted:#667085; --line:#e5e8ee; --accent:#1f6feb; --bg:#ffffff; --soft:#f7f8fa;
+         --broad:#0072B2; --narrow:#009E73; --cont:#E69F00; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       color:var(--ink);background:var(--bg);line-height:1.6}
+  .wrap{max-width:920px;margin:0 auto;padding:0 20px}
+  a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+  header{padding:46px 0 8px;text-align:center}
+  h1{margin:0;font-size:30px;letter-spacing:.2px}
+  h1 .e{color:var(--accent)}
+  .tagline{color:var(--muted);margin:10px auto 18px;max-width:640px}
+  .links a{display:inline-block;margin:0 7px;font-size:14px;border:1px solid var(--line);
+           padding:7px 13px;border-radius:8px;background:var(--soft);color:var(--ink)}
+  .links a:hover{border-color:var(--accent);text-decoration:none}
+  h2{font-size:15px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);
+     margin:38px 0 12px;border-bottom:1px solid var(--line);padding-bottom:8px}
+  h2 .lc{text-transform:none}   /* keep Greek letters (Hβ/Hα) from uppercasing to Β/Α */
+  .tool{background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:20px}
+  .row{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .row label{font-size:14px;color:var(--muted)}
+  input[type=file]{font-size:14px}
+  input[type=number],input[type=password],input[type=text]{padding:6px 8px;border:1px solid var(--line);
+     border-radius:8px;font-size:14px}
+  input#z{width:90px} input#key{width:280px} input#model{width:160px}
+  button{background:var(--accent);color:#fff;border:0;padding:9px 16px;border-radius:8px;font-size:14px;cursor:pointer}
+  button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  button:hover{filter:brightness(.96)} button:disabled{opacity:.5;cursor:default}
+  .hint{color:var(--muted);font-size:13px;margin-top:6px}
+  .status{font-size:13px;color:var(--accent);min-height:18px;margin:6px 0}
+  .plots{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px}
+  @media(max-width:760px){.plots{grid-template-columns:1fr}}
+  .plot{background:#fff;border:1px solid var(--line);border-radius:10px;min-height:360px}
+  .readout{font-size:14px;margin-top:12px;min-height:20px}
+  .readout b{color:var(--accent)}
+  .verdict{margin-top:14px;border:1px solid var(--line);border-radius:10px;background:#fff;
+           padding:14px 16px;font-size:14px;display:none}
+  .verdict h4{margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent)}
+  .note{font-size:13px;color:var(--muted);background:#fff8e6;border:1px solid #f3e2af;
+        border-radius:10px;padding:12px 14px;margin-top:16px}
+  .examples{display:grid;grid-template-columns:1fr;gap:16px}
+  .examples figure{margin:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+  .examples img{width:100%;display:block}
+  .examples figcaption{font-size:12px;color:var(--muted);padding:8px 12px}
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media(max-width:760px){.steps{grid-template-columns:1fr}}
+  .step{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fff}
+  .step b{color:var(--accent)} .step small{color:var(--muted)}
+  footer{color:var(--muted);font-size:13px;text-align:center;margin:48px 0 36px}
+  code{background:var(--soft);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:13px}
+</style>
+</head>
+<body>
+<header class="wrap">
+  <h1>AGN-<span class="e">Egent</span></h1>
+  <p class="tagline">Agentic spectral decomposition of active galactic nuclei. A power-law
+  continuum, Fe II, and tied narrow + broad lines, with an LLM in the quality-control loop.</p>
+  <p class="links">
+    <a href="https://github.com/seratsaad/agn-egent">GitHub</a>
+    <a href="https://github.com/seratsaad/agn-egent/blob/main/notebooks/run_on_your_fits.ipynb">Example notebook</a>
+    <a href="https://arxiv.org/abs/2512.01270">Egent paper</a>
+  </p>
+</header>
+
+<main class="wrap">
+  <h2>Try it: <span class="lc">H&beta;</span> and <span class="lc">H&alpha;</span> broad + narrow</h2>
+  <div class="tool">
+    <div class="row">
+      <label>Spectrum CSV <input type="file" id="file" accept=".csv,.txt"></label>
+      <label>redshift z <input type="number" id="z" value="0" step="0.0001" min="0"></label>
+      <button id="demo" class="ghost">Load example</button>
+    </div>
+    <div class="row">
+      <label>Claude API key <input type="password" id="key" placeholder="sk-ant-…  (optional)" autocomplete="off"></label>
+      <label>model <input type="text" id="model" value="claude-opus-4-8"></label>
+      <button id="run">Decompose</button>
+    </div>
+    <p class="hint">CSV with two columns: <code>wavelength</code> (observed-frame, &Aring;) and
+      <code>flux</code>. The browser fits a <b>power-law continuum</b>, a <b>broad Gaussian</b> and
+      the <b>narrow lines</b> in the H&beta; and H&alpha; windows and shows each region separately.
+      Add a Claude key (optional) to run the <b>agentic QC</b>, where Claude reviews the fit just like
+      the full pipeline. Need a file to try? Grab a
+      <a href="https://github.com/seratsaad/agn-egent/tree/main/examples">real AGN spectrum CSV</a>
+      (the redshift is in the filename).</p>
+    <div class="status" id="status"></div>
+    <div class="plots">
+      <div id="plotHb" class="plot"></div>
+      <div id="plotHa" class="plot"></div>
+    </div>
+    <div id="readout" class="readout"></div>
+    <div id="verdict" class="verdict"><h4>Claude QC review</h4><div id="verdictBody"></div></div>
+    <div class="note"><b>Lightweight in-browser preview.</b> The full method (PyQSOFit fitting,
+      anchored continuum, Fe II / host components, tied multiplets, Monte-Carlo errors and the
+      multi-step agentic loop) runs in Python. Clone the
+      <a href="https://github.com/seratsaad/agn-egent">repository</a> and open the
+      <a href="https://github.com/seratsaad/agn-egent/blob/main/notebooks/run_on_your_fits.ipynb">example notebook</a>.
+      Your API key is sent only from your browser directly to Anthropic; it is never stored.</div>
+  </div>
+
+  <h2>How it works</h2>
+  <div class="steps">
+    <div class="step"><b>1 &middot; Continuum</b><br><small>The continuum is a single power law, fit on
+      line-free windows. Fe II, the Balmer continuum, and host starlight are separate additive
+      components, never part of the continuum.</small></div>
+    <div class="step"><b>2 &middot; Lines</b><br><small>Each Balmer line is fit with one or more broad
+      Gaussians, plus narrow lines ([O&nbsp;III], [N&nbsp;II], [S&nbsp;II]) tied in velocity and width.
+      H&beta; and H&alpha; can be fit jointly or each in its own region.</small></div>
+    <div class="step"><b>3 &middot; Agentic QC</b><br><small>A reviewer (rule-based or a vision LLM)
+      checks the residuals and edits the model from a fixed set of moves: add or remove a broad or
+      narrow Gaussian, or drop a component that is only fitting noise.</small></div>
+  </div>
+
+  <h2>Citation</h2>
+  <p style="font-size:14px;color:var(--muted)">Built on the Egent framework
+  (Ting, Mahmud Saad, Liu &amp; Shen 2025, <a href="https://arxiv.org/abs/2512.01270">arXiv:2512.01270</a>)
+  and PyQSOFit (Guo, Shen &amp; Wang 2018). Spectra from SDSS; validation against Shen et&nbsp;al. (2011).</p>
+</main>
+
+<footer>AGN-Egent &middot; MIT License &middot; <a href="https://github.com/seratsaad/agn-egent">github.com/seratsaad/agn-egent</a></footer>
+
+<script>
+const C = 299792.458; // km/s
+// Each region: fit window, continuum side-bands, broad-mask (narrow cores excluded
+// from the broad fit), and the narrow-line rest wavelengths to fit.
+const LINES = {
+  "Hβ": {div:"plotHb", lam:4862.68, region:[4720,5110], blue:[4720,4790], red:[5035,5105],
+         mask:[[4853,4873],[4951,4969],[4998,5016]],
+         narrow:[4862.68,4960.30,5008.24]},                 // Hβ, [OIII] 4959/5007
+  "Hα": {div:"plotHa", lam:6562.80, region:[6300,6850], blue:[6300,6420], red:[6760,6850],
+         mask:[[6553,6573],[6543,6556],[6579,6591]],
+         narrow:[6562.80,6549.85,6585.28,6718.29,6732.67]}, // Hα, [NII], [SII]
+};
+
+function median(a){ if(!a.length) return NaN; const b=[...a].sort((x,y)=>x-y);
+  const n=b.length; return n%2? b[(n-1)/2] : 0.5*(b[n/2-1]+b[n/2]); }
+function bandMed(w,f,lo,hi){ const ww=[],ff=[];
+  for(let i=0;i<w.length;i++) if(w[i]>=lo&&w[i]<=hi&&isFinite(f[i])){ww.push(w[i]);ff.push(f[i]);}
+  return [median(ww),median(ff),ww.length]; }
+
+function powerlaw(w,f,blue,red,lam0){
+  const [wb,fb,nb]=bandMed(w,f,blue[0],blue[1]); const [wr,fr,nr]=bandMed(w,f,red[0],red[1]);
+  if(nb<3||nr<3) return null;
+  if(fb>0&&fr>0){ const k=Math.log(fr/fb)/Math.log(wr/wb), A=fb/Math.pow(wb/lam0,k);
+                  return x=>A*Math.pow(x/lam0,k); }
+  const m=(fr-fb)/(wr-wb), b=fb-m*wb; return x=>m*x+b;
+}
+function inMask(x,masks){ for(const m of masks) if(x>=m[0]&&x<=m[1]) return true; return false; }
+const gauss=(x,A,c,s)=>A*Math.exp(-((x-c)*(x-c))/(2*s*s));
+function robustStd(a){ if(a.length<5) return NaN; const m=median(a);
+  const mad=median(a.map(x=>Math.abs(x-m))); return mad>0?1.4826*mad:NaN; }
+
+// one broad Gaussian fit to the continuum-subtracted wings (narrow cores masked)
+function fitBroad(w,r,region,lam,masks){
+  const xs=[],ys=[];
+  for(let i=0;i<w.length;i++) if(w[i]>=region[0]&&w[i]<=region[1]&&isFinite(r[i])&&!inMask(w[i],masks)){xs.push(w[i]);ys.push(r[i]);}
+  if(xs.length<12) return null;
+  let best={sse:Infinity};
+  for(let s=6;s<=110;s+=2) for(let c=lam-20;c<=lam+20;c+=2){
+    let sfg=0,sgg=0; for(let i=0;i<xs.length;i++){ const g=Math.exp(-((xs[i]-c)**2)/(2*s*s)); sfg+=ys[i]*g; sgg+=g*g; }
+    let A=sgg>0?sfg/sgg:0; if(A<0)A=0;
+    let sse=0; for(let i=0;i<xs.length;i++){ const d=ys[i]-A*Math.exp(-((xs[i]-c)**2)/(2*s*s)); sse+=d*d; }
+    if(sse<best.sse) best={sse,s,c,A};
+  }
+  best.fwhm_kms=2.35482*best.s/best.c*C; return best;
+}
+
+// narrow lines: a shared width, one (non-negative) amplitude per catalog line,
+// fit to (data - continuum - broad). Returns {sig, lines:[{c,A}]}.
+function fitNarrow(w,r2,region,centers){
+  const xs=[],ys=[];
+  for(let i=0;i<w.length;i++) if(w[i]>=region[0]&&w[i]<=region[1]&&isFinite(r2[i])){xs.push(w[i]);ys.push(r2[i]);}
+  if(xs.length<10) return null;
+  let best={sse:Infinity};
+  for(let s=1.0;s<=7.0;s+=0.5){
+    const amps=centers.map(c=>{ let sfg=0,sgg=0;
+      for(let i=0;i<xs.length;i++){ const g=Math.exp(-((xs[i]-c)**2)/(2*s*s)); sfg+=ys[i]*g; sgg+=g*g; }
+      return sgg>0?Math.max(0,sfg/sgg):0; });
+    let sse=0;
+    for(let i=0;i<xs.length;i++){ let m=0; for(let k=0;k<centers.length;k++) m+=amps[k]*Math.exp(-((xs[i]-centers[k])**2)/(2*s*s));
+      const d=ys[i]-m; sse+=d*d; }
+    if(sse<best.sse) best={sse,s,amps};
+  }
+  return {sig:best.s, lines:centers.map((c,k)=>({c,A:best.amps[k]}))};
+}
+
+function decomposeLine(name,cfg,w,f,z){
+  const rest=w.map(x=>x/(1+z)); const el=document.getElementById(cfg.div);
+  if(rest.filter(x=>x>=cfg.region[0]&&x<=cfg.region[1]).length<15){
+    Plotly.purge(cfg.div); el.innerHTML='<p style="color:#667085;padding:24px;text-align:center">'+name+' not covered at z='+z+'</p>'; return null; }
+  const cont=powerlaw(rest,f,cfg.blue,cfg.red,cfg.lam);
+  if(!cont){ Plotly.purge(cfg.div); el.innerHTML='<p style="color:#667085;padding:24px;text-align:center">no continuum bands for '+name+'</p>'; return null; }
+  const resid=rest.map((x,i)=>f[i]-cont(x));
+  const broad=fitBroad(rest,resid,cfg.region,cfg.lam,cfg.mask);
+  const r2=rest.map((x,i)=>resid[i]-(broad?gauss(x,broad.A,broad.c,broad.s):0));
+  const narrow=fitNarrow(rest,r2,cfg.region,cfg.narrow);
+
+  const xs=[],fy=[],cy=[],by=[],ny=[],res=[];
+  for(let i=0;i<rest.length;i++) if(rest[i]>=cfg.region[0]&&rest[i]<=cfg.region[1]){
+    const x=rest[i], cc=cont(x); xs.push(x); fy.push(f[i]); cy.push(cc);
+    const b=broad?gauss(x,broad.A,broad.c,broad.s):0;
+    let nm=0; if(narrow) for(const L of narrow.lines) nm+=gauss(x,L.A,L.c,narrow.sig);
+    by.push(cc+b); ny.push(cc+nm); res.push(f[i]-(cc+b+nm));      // data - total model
+  }
+  // pull = residual / local noise (estimated in the line-free continuum bands)
+  const bandRes=[]; for(let i=0;i<xs.length;i++)
+    if((xs[i]>=cfg.blue[0]&&xs[i]<=cfg.blue[1])||(xs[i]>=cfg.red[0]&&xs[i]<=cfg.red[1])) bandRes.push(res[i]);
+  let sig=robustStd(bandRes); if(!isFinite(sig)) sig=robustStd(res); if(!isFinite(sig)||sig<=0) sig=1;
+  const pull=res.map(r=>r/sig);
+
+  const traces=[
+    {x:xs,y:fy,name:'data',mode:'lines',line:{color:'#444',width:1}},
+    {x:xs,y:cy,name:'continuum (power law)',mode:'lines',line:{color:'#E69F00',width:2}},
+  ];
+  if(broad)  traces.push({x:xs,y:by,name:'broad',mode:'lines',line:{color:'#0072B2',width:2}});
+  if(narrow) traces.push({x:xs,y:ny,name:'narrow',mode:'lines',line:{color:'#009E73',width:1.6}});
+  traces.push({x:xs,y:pull,name:'pull',mode:'lines',line:{color:'#666',width:1},
+               xaxis:'x',yaxis:'y2',showlegend:false});
+  const title = broad ? name+' broad FWHM ≈ '+Math.round(broad.fwhm_kms).toLocaleString()+' km/s' : name;
+  const band=(y,c,d)=>({type:'line',xref:'paper',x0:0,x1:1,yref:'y2',y0:y,y1:y,
+                        line:{color:c,width:1,dash:d}});
+  Plotly.newPlot(cfg.div, traces, {
+    title:{text:title,font:{size:14}}, margin:{t:36,r:12,b:46,l:54}, font:{size:11},
+    xaxis:{title:{text:'rest wavelength (Å)',standoff:4},anchor:'y2'},
+    yaxis:{title:'flux',domain:[0.30,1]},
+    yaxis2:{title:'pull',domain:[0,0.20],range:[-8,8],zeroline:false},
+    legend:{x:0.99,y:0.99,xanchor:'right',yanchor:'top',font:{size:9},
+            bgcolor:'rgba(255,255,255,0.6)',bordercolor:'#e5e8ee',borderwidth:1},
+    shapes:[band(0,'#999',null),band(3,'#D55E00','dash'),band(-3,'#D55E00','dash')]
+  }, {displayModeBar:false,responsive:true});
+  return {fwhm: broad?broad.fwhm_kms:null, narrowN: narrow?narrow.lines.filter(L=>L.A>0).length:0};
+}
+
+let LAST = {};
+function run(w,f,z){
+  document.getElementById('verdict').style.display='none';
+  const out={}; for(const [name,cfg] of Object.entries(LINES)) out[name]=decomposeLine(name,cfg,w,f,z);
+  LAST={w,f,z,out};
+  const parts=[];
+  for(const [name,o] of Object.entries(out)) if(o&&o.fwhm)
+    parts.push(name+': broad FWHM <b>'+Math.round(o.fwhm).toLocaleString()+'</b> km/s, '+o.narrowN+' narrow lines');
+  document.getElementById('readout').innerHTML = parts.length? parts.join(' &nbsp;&middot;&nbsp; ') : 'No broad line measured. Check the redshift.';
+  const key=document.getElementById('key').value.trim();
+  if(key) reviewWithClaude(key);
+}
+
+async function reviewWithClaude(key){
+  const status=document.getElementById('status');
+  const vbox=document.getElementById('verdict'), vbody=document.getElementById('verdictBody');
+  status.textContent='Running agentic QC with Claude…';
+  let img=null; try{ img=await Plotly.toImage('plotHb',{format:'png',width:900,height:520}); }catch(e){}
+  const meas=Object.entries(LAST.out).map(([n,o])=>o&&o.fwhm?`${n} broad FWHM ${Math.round(o.fwhm)} km/s, ${o.narrowN} narrow lines`:`${n} no broad line`).join('; ');
+  const prompt=`You are an AGN/quasar spectroscopist doing quality control on a quick browser decomposition.
+Measured: ${meas}. The figure shows the Hβ region: data, a power-law continuum, a broad Gaussian and the narrow lines.
+In 3 to 4 sentences, assess whether the broad/narrow separation and continuum look physical, and flag any issues (over-broad wings, Fe II mistaken for continuum, a narrow line that is just noise). This is the agentic QC step of AGN-Egent.`;
+  const content=[{type:'text',text:prompt}];
+  if(img) content.push({type:'image',source:{type:'base64',media_type:'image/png',data:img.split(',')[1]}});
+  try{
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+      headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01',
+               'anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:document.getElementById('model').value.trim()||'claude-opus-4-8',
+        max_tokens:600, messages:[{role:'user',content}]})});
+    const data=await resp.json();
+    if(!resp.ok){ throw new Error((data.error&&data.error.message)||('HTTP '+resp.status)); }
+    const text=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
+    vbody.textContent=text||'(no text returned)'; vbox.style.display='block'; status.textContent='';
+  }catch(e){
+    status.textContent=''; vbody.textContent='Claude review failed: '+e.message+
+      '  (check the key and model name; the call goes directly from your browser to Anthropic.)';
+    vbox.style.display='block';
+  }
+}
+
+function parseCSV(text){
+  const w=[],f=[];
+  for(const line of text.split(/\r?\n/)){ const t=line.trim(); if(!t) continue;
+    const p=t.split(/[,\s;]+/).map(Number);
+    if(p.length>=2&&isFinite(p[0])&&isFinite(p[1])){ w.push(p[0]); f.push(p[1]); } }
+  return [w,f];
+}
+
+let LOADED=null; // {w,f}
+function setStatus(s){ document.getElementById('status').textContent=s; }
+
+document.getElementById('demo').onclick=()=>{
+  fetch('example_spectrum.csv').then(r=>r.text()).then(txt=>{
+    const [w,f]=parseCSV(txt); LOADED={w,f}; document.getElementById('z').value='0.2942';
+    setStatus('Example loaded: SDSS 650-52143-166 (z=0.2942). Press Decompose. Add a Claude key first to run the agentic QC.');
+  }).catch(()=>alert('Could not load the example file.'));
+};
+
+document.getElementById('run').onclick=()=>{
+  const z=parseFloat(document.getElementById('z').value)||0;
+  const fi=document.getElementById('file');
+  if(fi.files.length){
+    const rd=new FileReader();
+    rd.onload=e=>{ const [w,f]=parseCSV(e.target.result);
+      if(w.length<20){ alert('Could not read two numeric columns from that file.'); return; } setStatus(''); run(w,f,z); };
+    rd.readAsText(fi.files[0]);
+  } else if(LOADED){ setStatus(''); run(LOADED.w,LOADED.f,z); }
+  else { alert('Choose a CSV file, or click “Load example” first.'); }
+};
+</script>
+</body>
+</html>

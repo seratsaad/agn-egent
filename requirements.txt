@@ -1,0 +1,26 @@
+# Core scientific stack
+numpy>=1.24
+scipy>=1.10
+astropy>=6.0
+matplotlib>=3.6
+
+# PyQSOFit fitting engine + its dependencies
+#   PyQSOFit itself is installed separately from its repo (see README):
+#       git clone https://github.com/legolason/PyQSOFit.git external/PyQSOFit
+#       pip install -e external/PyQSOFit
+lmfit>=1.2
+ppxf>=9.0
+PyAstronomy>=0.20
+sfdmap2>=0.2
+emcee>=3.1
+corner>=2.2
+
+# Reproducibility, data access, LLM, plotting
+threadpoolctl>=3.0
+astroquery>=0.4.7      # SDSS spectra + Shen DR7 catalog (literature benchmark)
+anthropic>=0.40        # ClaudeInspector (optional LLM reviewer)
+openai>=1.30           # OpenAIInspector (optional LLM reviewer)
+pillow>=10.0           # diagnostic PNGs for the vision model
+
+# Web app (optional; app.py / Streamlit Cloud)
+streamlit>=1.30

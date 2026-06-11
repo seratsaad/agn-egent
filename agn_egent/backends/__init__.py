@@ -1,0 +1,1 @@
+"""Pluggable spectral-decomposition backends."""

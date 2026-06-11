@@ -1,0 +1,279 @@
+[
+ {
+  "id": "spec-0332",
+  "name": "SDSS J1016+0034 (spec-0332-52367-0639)",
+  "kind": "SDSS example (low-z AGN)",
+  "z": 0.1006,
+  "status": "accepted",
+  "figure": "assets/spec-0332.png",
+  "lines": {
+   "Hb": {
+    "fwhm": 4134.0,
+    "fwhm_err": 706.5,
+    "flux": 736.7,
+    "snr": 4.5
+   },
+   "Ha": {
+    "fwhm": 5410.6,
+    "fwhm_err": 986.0,
+    "flux": 4420.1,
+    "snr": 20.0
+   }
+  },
+  "continuum": {
+   "logL5100": 43.3
+  },
+  "derived": {
+   "logMBH": 7.82,
+   "logMBH_err": 0.2,
+   "logLbol": 44.31,
+   "lambda_edd": 0.025
+  },
+  "agent": [
+   {
+    "iter": 0,
+    "verdict": "WARN",
+    "action": "apply",
+    "remedy": "set_ngauss",
+    "rationale": "apply remedy: set Hb_br broad Gaussians -> 1"
+   },
+   {
+    "iter": 1,
+    "verdict": "WARN",
+    "action": "accept",
+    "remedy": null,
+    "rationale": "remaining warnings reflect data limits, not fixable by a model edit"
+   }
+  ],
+  "shen": null
+ },
+ {
+  "id": "shen-388-51793-445",
+  "name": "SDSS 388-51793-445",
+  "kind": "SDSS quasar (Shen DR7)",
+  "z": 0.3157,
+  "status": "accepted",
+  "figure": "assets/shen-388-51793-445.png",
+  "lines": {
+   "Hb": {
+    "fwhm": 10247.8,
+    "fwhm_err": 365.5,
+    "flux": 4316.1,
+    "snr": 9.2
+   },
+   "Ha": {
+    "fwhm": 8627.8,
+    "fwhm_err": 270.0,
+    "flux": 18741.6,
+    "snr": 22.9
+   }
+  },
+  "continuum": {
+   "logL5100": 44.8
+  },
+  "derived": {
+   "logMBH": 9.32,
+   "logMBH_err": 0.1,
+   "logLbol": 45.75,
+   "lambda_edd": 0.021
+  },
+  "agent": [
+   {
+    "iter": 0,
+    "verdict": "WARN",
+    "action": "accept",
+    "remedy": null,
+    "rationale": "remaining warnings reflect data limits, not fixable by a model edit"
+   }
+  ],
+  "shen": {
+   "logMBH": 8.99,
+   "fwhm": 10239.0,
+   "logL5100": 44.85
+  }
+ },
+ {
+  "id": "shen-389-51795-409",
+  "name": "SDSS 389-51795-409",
+  "kind": "SDSS quasar (Shen DR7)",
+  "z": 0.3624,
+  "status": "accepted",
+  "figure": "assets/shen-389-51795-409.png",
+  "lines": {
+   "Hb": {
+    "fwhm": 3045.9,
+    "fwhm_err": 204.2,
+    "flux": 3170.0,
+    "snr": 26.5
+   },
+   "Ha": {
+    "fwhm": 3298.6,
+    "fwhm_err": 606.8,
+    "flux": 7740.9,
+    "snr": 30.4
+   }
+  },
+  "continuum": {
+   "logL5100": 44.8
+  },
+  "derived": {
+   "logMBH": 8.27,
+   "logMBH_err": 0.1,
+   "logLbol": 45.75,
+   "lambda_edd": 0.241
+  },
+  "agent": [
+   {
+    "iter": 0,
+    "verdict": "FAIL",
+    "action": "apply",
+    "remedy": "set_ngauss",
+    "rationale": "apply remedy: set Hb_br broad Gaussians -> 2"
+   },
+   {
+    "iter": 1,
+    "verdict": "WARN",
+    "action": "accept",
+    "remedy": null,
+    "rationale": "remaining warnings reflect data limits, not fixable by a model edit"
+   }
+  ],
+  "shen": {
+   "logMBH": 8.15,
+   "fwhm": 2062.0,
+   "logL5100": 44.81
+  }
+ },
+ {
+  "id": "shen-2630-54327-149",
+  "name": "SDSS 2630-54327-149",
+  "kind": "SDSS quasar (Shen DR7)",
+  "z": 0.3293,
+  "status": "accepted",
+  "figure": "assets/shen-2630-54327-149.png",
+  "lines": {
+   "Hb": {
+    "fwhm": 4984.3,
+    "fwhm_err": 511.3,
+    "flux": 1053.0,
+    "snr": 10.3
+   },
+   "Ha": {
+    "fwhm": 3201.9,
+    "fwhm_err": 1317.5,
+    "flux": 3953.4,
+    "snr": 45.9
+   }
+  },
+  "continuum": {
+   "logL5100": 44.2
+  },
+  "derived": {
+   "logMBH": 8.42,
+   "logMBH_err": 0.1,
+   "logLbol": 45.2,
+   "lambda_edd": 0.047
+  },
+  "agent": [
+   {
+    "iter": 0,
+    "verdict": "WARN",
+    "action": "accept",
+    "remedy": null,
+    "rationale": "remaining warnings reflect data limits, not fixable by a model edit"
+   }
+  ],
+  "shen": {
+   "logMBH": 8.16,
+   "fwhm": 4009.0,
+   "logL5100": 44.46
+  }
+ },
+ {
+  "id": "j0950",
+  "name": "J0950+5128 (HET/LRS2)",
+  "kind": "Heterogeneous instrument",
+  "z": 0.2144,
+  "status": "accepted",
+  "figure": "assets/j0950.png",
+  "lines": {
+   "Hb": {
+    "fwhm": 6851.1,
+    "fwhm_err": 1890.5,
+    "flux": 788.2,
+    "snr": 4.9
+   }
+  },
+  "continuum": {
+   "logL5100": 43.7
+  },
+  "derived": {
+   "logMBH": 8.41,
+   "logMBH_err": 0.3,
+   "logLbol": 44.63,
+   "lambda_edd": 0.013
+  },
+  "agent": [
+   {
+    "iter": 0,
+    "verdict": "WARN",
+    "action": "apply",
+    "remedy": "set_ngauss",
+    "rationale": "apply remedy: set Hb_br broad Gaussians -> 1"
+   },
+   {
+    "iter": 1,
+    "verdict": "WARN",
+    "action": "accept",
+    "remedy": null,
+    "rationale": "remaining warnings reflect data limits, not fixable by a model edit"
+   }
+  ],
+  "shen": null
+ },
+ {
+  "id": "synthetic",
+  "name": "Synthetic spectrum (known truth)",
+  "kind": "Injection-recovery",
+  "z": 0.1,
+  "status": "accepted",
+  "figure": "assets/synthetic.png",
+  "lines": {
+   "Hb": {
+    "fwhm": 4199.9,
+    "fwhm_err": 122.8,
+    "flux": 773.9,
+    "snr": 90.0
+   },
+   "Ha": {
+    "fwhm": 4517.4,
+    "fwhm_err": 77.9,
+    "flux": 2744.3,
+    "snr": 234.9
+   }
+  },
+  "continuum": {
+   "logL5100": 42.6
+  },
+  "derived": {
+   "logMBH": 7.47,
+   "logMBH_err": 0.0,
+   "logLbol": 43.59,
+   "lambda_edd": 0.01
+  },
+  "agent": [
+   {
+    "iter": 0,
+    "verdict": "WARN",
+    "action": "accept",
+    "remedy": null,
+    "rationale": "remaining warnings reflect data limits, not fixable by a model edit"
+   }
+  ],
+  "shen": null,
+  "truth": {
+   "hbeta_fwhm": 4200,
+   "halpha_fwhm": 4600
+  }
+ }
+]
