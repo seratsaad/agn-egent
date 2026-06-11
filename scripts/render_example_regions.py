@@ -16,10 +16,10 @@ from matplotlib import gridspec
 C = 299792.458  # km/s
 PROJ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# a clear broad-line quasar, different from the site's default example
-CSV = os.path.join(PROJ, "examples", "agn_388-51793-445_z0.3157.csv")
-Z = 0.3157
-OBJ = "SDSS 388-51793-445"
+# the same spectrum as the site's "Load example" button (docs/example_spectrum.csv)
+CSV = os.path.join(PROJ, "docs", "example_spectrum.csv")
+Z = 0.2942
+OBJ = "SDSS 650-52143-166"
 OUT = os.path.join(PROJ, "docs", "assets", "example-regions.png")
 
 LINES = {
