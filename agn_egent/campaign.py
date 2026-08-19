@@ -343,7 +343,14 @@ def write_gallery(short: dict, outdir: str, novelty: dict | None = None,
                       else "<div class='meta'>(no diagnostic image)</div>")
             oiii = (r.science or {}).get("oiii") or {}
             hb = (r.science or {}).get("hbeta") or {}
+            ha = (r.science or {}).get("halpha") or {}
             fe = (r.science or {}).get("feii") or {}
+            # the data-based peak test is the disk-emitter selector; show the
+            # numbers from whichever line fired it (model stats as fallback)
+            dp = next((p for p in (hb, ha) if p.get("data_double_peaked")), None)
+            sep = (dp or hb).get("data_peak_separation_kms") or hb.get("peak_separation_kms")
+            con = (dp or hb).get("data_peak_contrast") or hb.get("peak_contrast")
+            dp_line = "Hb" if dp is hb else ("Ha" if dp is ha else "Hb")
             nov = novelty.get(r.name)
             if nov is None:
                 novhtml = ""
@@ -359,8 +366,8 @@ def write_gallery(short: dict, outdir: str, novelty: dict | None = None,
                 f"<span class='k'>log M_BH</span> {_fmt((r.derived or {}).get('log_MBH'))}<br>"
                 f"<span class='k'>FWHM(Hb)</span> {_fmt(hb.get('fwhm_kms'), '.0f')} km/s<br>"
                 f"<span class='k'>broad asym</span> {_fmt(hb.get('asymmetry'), '+.2f')}<br>"
-                f"<span class='k'>peak sep</span> {_fmt(hb.get('peak_separation_kms'), '.0f')} km/s"
-                f" (contrast {_fmt(hb.get('peak_contrast'))})<br>"
+                f"<span class='k'>peak sep ({dp_line})</span> {_fmt(sep, '.0f')} km/s"
+                f" (contrast {_fmt(con)})<br>"
                 f"<span class='k'>[OIII] W80</span> {_fmt(oiii.get('w80_kms'), '.0f')} km/s"
                 f" &nbsp; v50 {_fmt(oiii.get('v50_kms'), '+.0f')}<br>"
                 f"<span class='k'>R_FeII</span> {_fmt(fe.get('r_feii'))}<br>"
