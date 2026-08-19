@@ -218,6 +218,39 @@ def test_lopsided_wing_bump_is_not_a_disk_emitter():
     assert not S.broad_profile(r, "Hb").data_double_peaked
 
 
+def test_interpolation_bridge_is_not_a_horn():
+    """A peak on masked (interpolated) pixels must not count.
+
+    When strong [O III] dominates a wide stretch of the window, the whole
+    stretch is masked and the profile is bridged by interpolation. The bridge
+    ends at whatever level the far side sits, and that endpoint looks like a
+    horn -- a 5k campaign's top 'disk emitter' (contrast 1.0) was exactly this.
+    """
+    lam0 = S.REST_WAVE["Hb"]
+    wave = np.linspace(4000.0, 7000.0, 12000)
+    rng = np.random.default_rng(43)
+
+    def g(amp, v_off, sig):
+        return amp * np.exp(-0.5 * ((wave - lam0 * (1 + v_off / C))
+                                    / (lam0 * sig / C)) ** 2)
+
+    broad = 6.0 * g(1.0, 0.0, 1800.0)
+    # a strong, WIDE narrow complex red of the line, and messy residual flux
+    # just beyond it, so the interpolation bridge ends on an elevated shelf
+    narrow_model = 40.0 * g(1.0, 7000.0, 900.0)
+    shelf = 3.0 * g(1.0, 10500.0, 500.0)
+    data = broad + narrow_model * 1.02 + shelf + rng.normal(0, 0.2, wave.size)
+    r = DecompositionResult(
+        name="bridge", z=0.1, backend="analytic", rest_wave=wave,
+        components={"err": np.full_like(wave, 0.2), "data": data,
+                    "conti": np.zeros_like(wave), "narrow": narrow_model},
+        lines=_hb_meas(), continuum={}, quality={}, params={},
+        line_models={"Hb_br": broad})
+    b = S.broad_profile(r, "Hb")
+    assert not b.data_double_peaked, \
+        f"bridge endpoint counted as a horn (sep={b.data_peak_separation_kms})"
+
+
 def test_oversubtracted_trough_is_not_a_disk_emitter():
     """A negative trough from over-subtraction must not explode the contrast.
 

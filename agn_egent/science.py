@@ -439,8 +439,18 @@ def _empirical_broad_profile(result, complex_name: str, sel: np.ndarray):
     return prof[sel]
 
 
+# Where the fitted narrow model exceeds this many times the local noise, the
+# narrow subtraction cannot be trusted to better than the noise, so the pixel
+# is interpolated over before peaks are counted. A very strong [O III] (70x
+# the continuum) leaves percent-level residual shoulders far outside any
+# fixed-width mask -- a 5k-campaign candidate was exactly that.
+NARROW_DOMINANCE_RATIO = 1.0
+
+
 def _mask_narrow_residuals(wave: np.ndarray, prof: np.ndarray,
-                           complex_name: str | None = None) -> np.ndarray:
+                           complex_name: str | None = None,
+                           narrow: np.ndarray | None = None,
+                           err: np.ndarray | None = None):
     """Interpolate the profile across the narrow-line positions.
 
     Subtracting the fitted narrow lines never cancels them exactly, and what is
@@ -450,6 +460,13 @@ def _mask_narrow_residuals(wave: np.ndarray, prof: np.ndarray,
     the fact; it has to be removed before peaks are counted. Interpolating
     (rather than cutting) keeps the array contiguous so the gap edges do not
     themselves look like peaks.
+
+    Returns ``(profile, mask)``. The caller must reject any *peak* lying on
+    masked pixels: the interpolated bridge across a wide masked region ends at
+    whatever level the far side sits, and that endpoint reads as a horn (a 5k
+    campaign's top "disk emitter" was exactly such a bridge over strong
+    [O III]). The trough between two horns MAY sit on masked pixels -- a real
+    disk dip is at systemic, under the masked Balmer narrow core.
     """
     bad = np.zeros(wave.shape, dtype=bool)
     for line in NARROW_MASK_LINES:
@@ -460,11 +477,18 @@ def _mask_narrow_residuals(wave: np.ndarray, prof: np.ndarray,
     own = REST_WAVE.get(complex_name) if complex_name else None
     if own is not None:
         bad |= np.abs(velocity_grid(wave, own)) <= NARROW_CORE_MASK_HALF_KMS
+    # data-driven part: wherever the fitted narrow model is comparable to the
+    # noise, its subtraction residual can fake structure -- however wide the
+    # line is. The fixed windows above remain as a backstop for narrow flux
+    # the fit missed entirely.
+    if narrow is not None and err is not None:
+        with np.errstate(invalid="ignore"):
+            bad |= (np.abs(narrow) > NARROW_DOMINANCE_RATIO * err)
     if not bad.any() or bad.all():
-        return prof
+        return prof, bad
     out = prof.copy()
     out[bad] = np.interp(wave[bad], wave[~bad], prof[~bad])
-    return out
+    return out, bad
 
 
 def _smooth_profile(f: np.ndarray, v: np.ndarray, width_kms: float) -> np.ndarray:
@@ -555,8 +579,13 @@ def _measure_data_peaks(result, complex_name: str, out: BroadProfile,
         return
     wave = np.asarray(result.rest_wave, dtype=float)[dsel]
     vv = v[dsel]
-    prof = _smooth_profile(_mask_narrow_residuals(wave, dprof, complex_name),
-                           vv, DATA_SMOOTH_KMS)
+    narrow = result.components.get("narrow")
+    err_arr = result.components.get("err")
+    masked, bad = _mask_narrow_residuals(
+        wave, dprof, complex_name,
+        narrow=np.asarray(narrow, dtype=float)[dsel] if narrow is not None else None,
+        err=np.asarray(err_arr, dtype=float)[dsel] if err_arr is not None else None)
+    prof = _smooth_profile(masked, vv, DATA_SMOOTH_KMS)
     # An emission profile cannot be negative; where the continuum/host/narrow
     # subtraction overshoots, the residual dips below zero and a trough between
     # two "peaks" then makes (weaker - trough)/weaker arbitrarily large -- on a
@@ -565,7 +594,17 @@ def _measure_data_peaks(result, complex_name: str, out: BroadProfile,
     # sane scale, and the peak-height significance cut below removes the
     # near-zero "horns" those objects rode in on.
     prof = np.clip(prof, 0.0, None)
-    peaks = _find_peaks(vv, prof, min_prominence_frac=DATA_PEAK_MIN_PROMINENCE)
+
+    # a peak must stand on real pixels. Smoothing spreads a masked pixel's
+    # influence over the kernel, so the taint is dilated by half a kernel
+    # before the test.
+    dv = max(float(np.median(np.abs(np.diff(vv)))), 1e-6)
+    half_k = max(int(round(DATA_SMOOTH_KMS / dv)) // 2, 1)
+    taint = np.convolve(bad.astype(float), np.ones(2 * half_k + 1), mode="same") > 0
+
+    peaks = [(i, h) for i, h in
+             _find_peaks(vv, prof, min_prominence_frac=DATA_PEAK_MIN_PROMINENCE)
+             if not taint[i]]
     out.data_n_peaks = len(peaks)
     if len(peaks) < 2:
         return
