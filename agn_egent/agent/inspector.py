@@ -42,7 +42,8 @@ class Inspector(Protocol):
 
 def make_inspector(name: str = "rule", api_key: str | None = None,
                    model: str | None = None):
-    """Build an inspector by name: 'rule', 'claude'/'anthropic', or 'openai'/'gpt'."""
+    """Build an inspector by name: 'rule', 'claude'/'anthropic', 'openai'/'gpt',
+    or 'gemini'/'google'."""
     name = (name or "rule").lower()
     kw = {}
     if api_key:
@@ -53,6 +54,8 @@ def make_inspector(name: str = "rule", api_key: str | None = None,
         return ClaudeInspector(**kw)
     if name in ("openai", "gpt"):
         return OpenAIInspector(**kw)
+    if name in ("gemini", "google"):
+        return GeminiInspector(**kw)
     return RuleInspector()
 
 
@@ -242,13 +245,22 @@ class ClaudeInspector:
             content.append({"type": "image", "source": {
                 "type": "base64", "media_type": "image/png", "data": b64}})
 
-        resp = self._get_client().messages.create(
+        kw = dict(
             model=self.model, max_tokens=self.max_tokens,
-            thinking={"type": "adaptive"},
             system=[{"type": "text", "text": _SYSTEM_PROMPT,
                      "cache_control": {"type": "ephemeral"}}],
             tools=[_ANTHROPIC_TOOL],
             messages=[{"role": "user", "content": content}])
+        client = self._get_client()
+        try:
+            resp = client.messages.create(thinking={"type": "adaptive"}, **kw)
+        except Exception as e:
+            # cheaper models (e.g. Haiku) do not support adaptive thinking; retry
+            # without it rather than failing the whole batch.
+            if "thinking" in str(e).lower():
+                resp = client.messages.create(**kw)
+            else:
+                raise
 
         tool_use = next((b for b in resp.content
                          if getattr(b, "type", None) == "tool_use"
@@ -312,5 +324,113 @@ class OpenAIInspector:
             args = json.loads(calls[0].function.arguments)
         except (ValueError, AttributeError):
             return Decision("accept", None, "unparseable decision; accepting.", self.name)
+        return _decision_from(args.get("action", "accept"), args.get("remedy_index"),
+                              args.get("rationale", ""), remedies, self.name)
+
+
+class GeminiInspector:
+    """Google Gemini (vision) reviewer — same role as the Claude/OpenAI inspectors.
+
+    Calls the Generative Language REST API directly (no SDK dependency) with the
+    diagnostic image inline and a forced JSON response schema, so the model must
+    return the structured decision from the same closed remedy vocabulary. Default
+    model is the cheap, fast multimodal tier; this is the third independent vendor
+    used to show the agentic benefit is not specific to one model family.
+    """
+
+    name = "gemini"
+    _ENDPOINT = ("https://generativelanguage.googleapis.com/v1beta/models/"
+                 "{model}:generateContent")
+    # Gemini's responseSchema is an OpenAPI subset: uppercase TYPE names, enum on
+    # STRING. Mirrors _REVIEW_SCHEMA so all backends share one decision contract.
+    _RESPONSE_SCHEMA = {
+        "type": "OBJECT",
+        "properties": {
+            "action": {"type": "STRING",
+                       "enum": ["accept", "apply_remedy", "reject"]},
+            "remedy_index": {"type": "INTEGER"},
+            "rationale": {"type": "STRING"},
+        },
+        "required": ["action", "rationale"],
+        "propertyOrdering": ["action", "remedy_index", "rationale"],
+    }
+
+    # gemini-2.5-flash is the stable, reliable multimodal tier; the *-latest alias
+    # (3.5) and 3-preview routes are frequently 503-overloaded on the free tier.
+    def __init__(self, model: str = "gemini-2.5-flash", api_key: str | None = None,
+                 max_tokens: int = 4096, timeout: float = 120.0,
+                 max_retries: int = 6, thinking_budget: int = 1024):
+        self.model = model
+        self.api_key = api_key
+        # 2.5-flash spends "thinking" tokens out of the same budget; cap thinking
+        # and keep total >= thinking + the small JSON, or the answer truncates.
+        self.max_tokens = max_tokens
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.thinking_budget = thinking_budget
+
+    def _post(self, key, payload):
+        """POST with backoff on transient 429/503. Raises on persistent failure so
+        a server error becomes an honest skip, never a fabricated 'accept'."""
+        import time
+        import requests
+
+        url = self._ENDPOINT.format(model=self.model)
+        headers = {"Content-Type": "application/json", "X-goog-api-key": key}
+        last = None
+        for attempt in range(self.max_retries):
+            try:
+                resp = requests.post(url, headers=headers, json=payload,
+                                     timeout=self.timeout)
+            except requests.RequestException as e:   # network blip: back off, retry
+                last = e
+                time.sleep(min(2 ** attempt, 30))
+                continue
+            if resp.status_code in (429, 503, 500, 502, 504):
+                last = RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+                retry_after = resp.headers.get("Retry-After")
+                wait = float(retry_after) if retry_after else min(2 ** attempt, 30)
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            return resp.json()
+        raise RuntimeError(f"Gemini unavailable after {self.max_retries} retries: {last}")
+
+    def inspect(self, result, report: VerdictReport, history: list) -> Decision:
+        import json
+        import os
+
+        key = self.api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get(
+            "GOOGLE_API_KEY")
+        user_text, remedies = _build_user_text(result, report, history)
+        parts = [{"text": _SYSTEM_PROMPT + "\n\n" + user_text}]
+        b64 = _image_b64(result)
+        if b64:
+            parts.append({"inline_data": {"mime_type": "image/png", "data": b64}})
+
+        payload = {
+            "contents": [{"role": "user", "parts": parts}],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "responseSchema": self._RESPONSE_SCHEMA,
+                "maxOutputTokens": self.max_tokens,
+                "temperature": 0.0,
+                "thinkingConfig": {"thinkingBudget": self.thinking_budget},
+            },
+        }
+        data = self._post(key, payload)
+
+        # Concatenate non-thought text parts and parse the JSON object.
+        try:
+            cparts = data["candidates"][0]["content"]["parts"]
+        except (KeyError, IndexError):
+            return Decision("accept", None,
+                            "no Gemini content returned; accepting.", self.name)
+        text = "".join(p.get("text", "") for p in cparts if not p.get("thought"))
+        try:
+            args = json.loads(text)
+        except (ValueError, TypeError):
+            return Decision("accept", None,
+                            "unparseable Gemini decision; accepting.", self.name)
         return _decision_from(args.get("action", "accept"), args.get("remedy_index"),
                               args.get("rationale", ""), remedies, self.name)

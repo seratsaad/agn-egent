@@ -20,8 +20,8 @@ from .verify import verify, VerdictReport, Check, Status
 from .remedies import apply_remedy, describe_remedy
 from .plotting import render_diagnostic
 from .agent import (Decision, Inspector, RuleInspector, ClaudeInspector,
-                    OpenAIInspector, TriageInspector, make_inspector,
-                    AgentStep, AgentOutcome, run_agent,
+                    OpenAIInspector, GeminiInspector, TriageInspector, make_inspector,
+                    AgentStep, AgentOutcome, run_agent, run_agent_escalate,
                     ClaudeContinuumPlanner, make_continuum_planner)
 from .continuum import (ContinuumPlan, RuleContinuumPlanner, CANDIDATE_WINDOWS,
                         window_stats, anchored_pl_fit, apply_plan_to_config,
@@ -34,8 +34,18 @@ from .io_generic import load_row_fits
 from .io_sdss import spectrum_from_hdulist
 from .synthetic import make_synthetic_spectrum
 from .measure import derive, DerivedQuantities, black_hole_mass_hbeta
+from .science import (science_report, ScienceReport, oiii_outflow, OIIIOutflow,
+                      feii_strength, FeIIStrength, broad_profile, BroadProfile)
+from .anomaly import anomaly_score, AnomalyReport, WindowScore
+from .trust import trust_statement, reliability
 from .catalog import (query_shen, find_shen_quasars, fetch_sdss_spectrum,
                       ShenRecord, Comparison)
+from .campaign import (Target, select_sdss_targets, run_campaign, shortlist,
+                       vet_shortlist, yield_table, write_gallery,
+                       CANDIDATE_CLASSES)
+from .novelty import simbad_lookup, annotate, NoveltyRecord
+from .variability import (compare_outcomes, compare_epochs, compare_line,
+                          find_repeat_spectra, VariabilityReport, LineChange)
 
 __all__ = [
     "Spectrum",
@@ -59,11 +69,13 @@ __all__ = [
     "RuleInspector",
     "ClaudeInspector",
     "OpenAIInspector",
+    "GeminiInspector",
     "TriageInspector",
     "make_inspector",
     "AgentStep",
     "AgentOutcome",
     "run_agent",
+    "run_agent_escalate",
     "run_batch",
     "BatchReport",
     "BatchRow",
@@ -72,6 +84,36 @@ __all__ = [
     "derive",
     "DerivedQuantities",
     "black_hole_mass_hbeta",
+    "science_report",
+    "ScienceReport",
+    "oiii_outflow",
+    "OIIIOutflow",
+    "feii_strength",
+    "FeIIStrength",
+    "broad_profile",
+    "BroadProfile",
+    "anomaly_score",
+    "AnomalyReport",
+    "WindowScore",
+    "trust_statement",
+    "reliability",
+    "Target",
+    "select_sdss_targets",
+    "run_campaign",
+    "shortlist",
+    "vet_shortlist",
+    "yield_table",
+    "write_gallery",
+    "CANDIDATE_CLASSES",
+    "simbad_lookup",
+    "annotate",
+    "NoveltyRecord",
+    "compare_outcomes",
+    "compare_epochs",
+    "compare_line",
+    "find_repeat_spectra",
+    "VariabilityReport",
+    "LineChange",
     "spectrum_from_hdulist",
     "query_shen",
     "find_shen_quasars",

@@ -3,6 +3,16 @@
 Backend-agnostic and inspector-agnostic. Every iteration is recorded as an
 ``AgentStep`` so the whole trajectory (configs tried, verdicts, decisions,
 rationales, figures) is reproducible and auditable.
+
+Two entry points:
+
+* :func:`run_agent` -- the primitive: one inspector, one pass.
+* :func:`run_agent_escalate` -- the **recommended** path for an LLM inspector
+  (rule-first gating): the deterministic rules run to completion and the LLM is
+  consulted *only* on the objects they leave flagged. This keeps the LLM from
+  perturbing already-trustworthy masses, halves its footprint, and is the default
+  used throughout the paper pipeline. Use :func:`run_agent` directly only for the
+  rule-only baseline or the legacy triage ablation.
 """
 from __future__ import annotations
 
@@ -56,19 +66,32 @@ class AgentOutcome:
     def n_iterations(self) -> int:
         return len(self.steps)
 
+    # WARN-level checks that, on their own, make the single-epoch mass
+    # untrustworthy (as opposed to benign warnings like an elevated reduced
+    # chi^2 or a narrow-line residual, which do not invalidate the broad-line
+    # mass). The flag is defined on these physical grounds, then tested for
+    # calibration against the literature -- it is never tuned to the residuals.
+    _MASS_CRITICAL = ("broad_snr", "broad_fwhm", "pl_slope", "host_fraction")
+
     @property
     def quality_flag(self) -> str:
-        """Egent-style confidence tier: 'clean' | 'reviewed' | 'flagged'.
+        """Confidence tier for the measurement: 'clean' | 'reviewed' | 'flagged'.
 
-        clean    = accepted with an all-PASS verdict (no human/LLM attention needed)
-        reviewed = accepted but with residual warnings (best-effort, data-limited)
-        flagged  = rejected, or any FAIL remains (needs attention)
+        flagged  = the single-epoch mass should not be trusted: the fit was
+                   rejected, a check FAILED, or a mass-critical condition warns
+                   (weak/undetected or degenerate broad line, a railed/mis-placed
+                   power-law continuum, or a host-dominated continuum).
+        clean    = no warnings of any kind.
+        reviewed = accepted with only benign warnings (e.g. elevated chi^2 or a
+                   narrow-line residual) that do not invalidate the broad-line mass.
         """
-        if self.status == "rejected":
+        if self.status == "rejected" or self.final_verdict is None:
             return "flagged"
-        if self.final_verdict is None:
+        checks = self.final_verdict.checks
+        if any(c.status >= Status.FAIL for c in checks):
             return "flagged"
-        if any(c.status >= Status.FAIL for c in self.final_verdict.checks):
+        if any(c.status >= Status.WARN and c.name.endswith(self._MASS_CRITICAL)
+               for c in checks):
             return "flagged"
         if self.final_verdict.overall <= Status.PASS:
             return "clean"
@@ -80,6 +103,30 @@ class AgentOutcome:
         return any(s.decision.remedy is not None for s in self.steps) or \
             any(s.decision.source not in ("triage", "") for s in self.steps)
 
+    # Science + anomaly are derived from the *accepted* fit, so they are computed
+    # lazily on first access and cached: a batch run that only wants masses never
+    # pays for them, while a discovery campaign gets them without a second pass.
+    _science = None
+    _anomaly = None
+
+    @property
+    def science(self):
+        """Line-shape science for the accepted fit (outflows, R_FeII, profiles)."""
+        if self._science is None and self.final_result is not None:
+            from ..measure import derive
+            from ..science import science_report
+            self._science = science_report(self.final_result,
+                                           derived=derive(self.final_result, "Hb"))
+        return self._science
+
+    @property
+    def anomaly(self):
+        """Coherent-residual anomaly score for the accepted fit."""
+        if self._anomaly is None and self.final_result is not None:
+            from ..anomaly import anomaly_score
+            self._anomaly = anomaly_score(self.final_result)
+        return self._anomaly
+
     def to_dict(self) -> dict:
         return {
             "name": self.name,
@@ -88,6 +135,9 @@ class AgentOutcome:
             "final_verdict": str(self.final_verdict.overall) if self.final_verdict else None,
             "continuum_plan": (self.continuum_plan.to_dict()
                                if self.continuum_plan is not None else None),
+            "quality_flag": self.quality_flag,
+            "science": self.science.to_dict() if self.science is not None else None,
+            "anomaly": self.anomaly.to_dict() if self.anomaly is not None else None,
             "steps": [s.to_dict() for s in self.steps],
         }
 
@@ -212,3 +262,41 @@ def run_agent(spectrum,
 
     return AgentOutcome(spectrum.name or "obj", status, steps, result, verdict,
                         continuum_plan=continuum_plan)
+
+
+def run_agent_escalate(spectrum,
+                       llm_inspector: Inspector,
+                       rule_inspector: Inspector | None = None,
+                       escalate_on=("flagged",),
+                       workdir: str | None = None,
+                       **kwargs):
+    """Two-pass 'rule-first' QC: deterministic rules run to completion, and the
+    LLM is consulted *only* on the objects the rule pass leaves untrustworthy.
+
+    Pass 1 fits the object with the deterministic ``RuleInspector``. If the rule
+    outcome is acceptable (``quality_flag`` not in ``escalate_on`` -- i.e. clean
+    or reviewed-with-benign-warnings) it is returned as-is: the LLM never sees it,
+    so it cannot perturb an already-good mass. Only when the rule pass is
+    ``flagged`` (rejected, a FAILed check, or a mass-critical warning) does Pass 2
+    re-run the full loop with the LLM inspector, which gets a fresh crack with the
+    complete remedy vocabulary.
+
+    This concentrates the LLM exactly where the deterministic baseline fails --
+    minimising both cost and the LLM's footprint on the science quantity.
+
+    Returns ``(outcome, escalated, rule_outcome)``: ``outcome`` is the final result
+    (the rule outcome if not escalated, else the LLM's), ``escalated`` is True iff
+    the LLM ran, and ``rule_outcome`` is always the deterministic rule pass -- so a
+    single call yields both the rule baseline and the agent result, perfectly paired.
+    """
+    rule_inspector = rule_inspector or RuleInspector()
+    base = workdir or os.path.join(RUNS_DIR, f"agent_{spectrum.name or 'obj'}")
+
+    out_rule = run_agent(spectrum, inspector=rule_inspector,
+                         workdir=os.path.join(base, "rule"), **kwargs)
+    if out_rule.quality_flag not in escalate_on:
+        return out_rule, False, out_rule
+
+    out_llm = run_agent(spectrum, inspector=llm_inspector,
+                        workdir=os.path.join(base, "llm"), **kwargs)
+    return out_llm, True, out_rule

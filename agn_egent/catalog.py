@@ -62,12 +62,18 @@ def query_shen(plate: int, mjd: int, fiber: int) -> ShenRecord:
 
 
 def find_shen_quasars(z_min=0.28, z_max=0.45, sn_min=30.0, fwhm_min=2000.0,
-                      n=5) -> list[tuple[int, int, int]]:
-    """Return (plate, mjd, fiber) for a few clean Shen quasars (Hbeta well covered)."""
+                      n=5, sn_max=None) -> list[tuple[int, int, int]]:
+    """Return (plate, mjd, fiber) for Shen quasars (Hbeta well covered).
+
+    ``sn_max`` bounds the broad-Hbeta S/N from above, which is how we build a
+    deliberately *low-S/N* (hard) sample: e.g. ``sn_min=3, sn_max=8`` selects
+    poor-quality spectra where automated quality control matters most.
+    """
     from astroquery.vizier import Vizier
+    sn_filter = f">{sn_min}" + (f" && <{sn_max}" if sn_max is not None else "")
     V = Vizier(columns=["Plate", "MJD", "Fiber", "z", "SN(Hb)", "W(BHb)"],
                column_filters={"z": f">{z_min} && <{z_max}",
-                               "SN(Hb)": f">{sn_min}", "W(BHb)": f">{fwhm_min}"})
+                               "SN(Hb)": sn_filter, "W(BHb)": f">{fwhm_min}"})
     V.ROW_LIMIT = n
     res = V.get_catalogs(SHEN_CATALOG)
     if not res:

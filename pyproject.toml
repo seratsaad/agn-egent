@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agn-egent"
+version = "0.2.0"
+description = "LLM-Powered AGN Spectral Decomposition"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Serat Mahmud Saad" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Operating System :: OS Independent",
+]
+
+# NOTE: PyQSOFit is deliberately NOT listed here. It is not on PyPI in a form we
+# can pin, so it is installed separately from a git clone (see README):
+#     git clone https://github.com/legolason/PyQSOFit.git external/PyQSOFit
+#     pip install -e external/PyQSOFit
+# The entries below are PyQSOFit's fitting-stack dependencies plus our own.
+dependencies = [
+    # core scientific stack
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "astropy>=6.0",
+    "matplotlib>=3.6",
+    # PyQSOFit fitting-engine dependencies
+    "lmfit>=1.2",
+    "ppxf>=9.0",
+    "PyAstronomy>=0.20",
+    "sfdmap2>=0.2",
+    "emcee>=3.1",
+    "corner>=2.2",
+    # reproducibility, data access, plotting
+    "threadpoolctl>=3.0",
+    "astroquery>=0.4.7",
+    "pillow>=10.0",
+]
+
+[project.optional-dependencies]
+llm = [
+    "anthropic>=0.40",
+    "openai>=1.30",
+]
+app = [
+    "streamlit>=1.30",
+]
+dev = [
+    "pytest>=7.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/seratsaad/agn-egent"
+Repository = "https://github.com/seratsaad/agn-egent"
+
+[project.scripts]
+agn-egent = "agn_egent.__main__:main"
+
+# Install only the package and its subpackages (agn_egent.agent,
+# agn_egent.backends). The root-level modules config.py / run_agn.py / app.py
+# are repo-local entry points and must NOT land as top-level modules.
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agn_egent*"]
+namespaces = false
+
+# The trust calibration must ship with the package: an installed copy has no
+# access to the analysis directory that produced it.
+[tool.setuptools.package-data]
+agn_egent = ["data/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

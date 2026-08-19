@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "AGN-Egent"
+abstract: "LLM-Powered AGN Spectral Decomposition: a deterministic PyQSOFit engine fits quasar/AGN spectra and an LLM inspector reviews and repairs bad fits to measure black-hole masses."
+type: software
+version: "0.2.0"
+license: MIT
+repository-code: "https://github.com/seratsaad/agn-egent"
+url: "https://github.com/seratsaad/agn-egent"
+authors:
+  - family-names: "Saad"
+    given-names: "Serat Mahmud"
+keywords:
+  - astronomy
+  - active galactic nuclei
+  - quasars
+  - spectral decomposition
+  - black hole mass
+  - large language models

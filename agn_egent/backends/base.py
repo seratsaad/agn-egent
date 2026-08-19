@@ -64,6 +64,13 @@ class DecompositionResult:
     #                  "ngauss":.., "anchor": bool}}
     # lets the agent judge whether a narrow component is a real line or noise.
     narrow_lines: dict = field(default_factory=dict)
+    # per *physical* line profile models, summed over that line's Gaussians and
+    # sampled on `rest_wave`. Keyed by the physical line rather than the fitting
+    # component, so a core+wing pair ("OIII5007c" + "OIII5007w") appears once as
+    # "OIII5007" -- the profile you need for a line-shape measurement (W80,
+    # asymmetry, double peaks). Broad complexes are keyed "Hb_br" / "Ha_br".
+    # Arrays, so this is deliberately not serialized into provenance.
+    line_models: dict = field(default_factory=dict)
 
     # -- convenience accessors -------------------------------------------------
     def component(self, key: str) -> np.ndarray:

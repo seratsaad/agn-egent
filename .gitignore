@@ -3,6 +3,13 @@ __pycache__/
 .venv/
 venv/
 external/
+
+# build artifacts
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+
 data/runs/
 data/phase0/
 data/cache/
@@ -10,3 +17,16 @@ scratch/
 *.DS_Store
 .DS_Store
 .claude/
+paper/results/ablation_progress.txt
+paper/results/_*.json
+paper/results/*.log
+paper/figures/verify/
+paper/draft/*-current.pdf
+agn_egent_out/
+# campaign outputs: per-object fits, diagnostics and catalogs are regenerable
+campaigns/
+
+# private: internal notes and the unpublished paper draft
+llm.txt
+paper/
+scripts/paper/

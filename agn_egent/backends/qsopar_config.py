@@ -109,6 +109,10 @@ def _hbeta_halpha_lines() -> list[LinePrior]:
         # Hbeta complex
         LinePrior(4862.68, "Hb", 4640, 5100, "Hb_br",     2, 0, 0, 1e10, 5e-3, 4e-3,  0.05,    0.01,  0, 0, 0, 0.01,  1),
         LinePrior(4862.68, "Hb", 4640, 5100, "Hb_na",     1, 0, 0, 1e10, 1e-3, 2.3e-4, 0.00169, 0.01,  1, 1, 0, 0.002, 1),
+        # He II 4686 (vacuum 4687.02): broad wing contaminant of blue Hbeta + narrow core.
+        # Usually weak; the agent drops the narrow component when it is noise.
+        LinePrior(4687.02, "Hb", 4640, 5100, "HeII4687_br", 1, 0, 0, 1e10, 5e-3, 4e-3,  0.05,    0.015, 0, 0, 0, 0.005, 1),
+        LinePrior(4687.02, "Hb", 4640, 5100, "HeII4687_na", 1, 0, 0, 1e10, 1e-3, 2.3e-4, 0.00169, 0.01,  1, 1, 0, 0.001, 1),
         LinePrior(4960.30, "Hb", 4640, 5100, "OIII4959c", 1, 0, 0, 1e10, 1e-3, 2.3e-4, 0.00169, 0.01,  1, 1, 0, 0.002, 1),
         LinePrior(5008.24, "Hb", 4640, 5100, "OIII5007c", 1, 0, 0, 1e10, 1e-3, 2.3e-4, 0.00169, 0.01,  1, 1, 0, 0.004, 1),
         LinePrior(4960.30, "Hb", 4640, 5100, "OIII4959w", 1, 0, 0, 1e10, 3e-3, 2.3e-4, 0.004,   0.01,  2, 2, 0, 0.001, 1),

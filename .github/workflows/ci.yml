@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  smoke:
+    name: Phase-0 smoke test (offline, no API keys)
+    runs-on: ubuntu-latest
+    env:
+      # PyQSOFit's MLE fit is only reproducible with single-threaded BLAS.
+      # Set at the job level so every step (including pip builds) inherits it.
+      OMP_NUM_THREADS: 1
+      OPENBLAS_NUM_THREADS: 1
+      MKL_NUM_THREADS: 1
+      VECLIB_MAXIMUM_THREADS: 1
+      NUMEXPR_NUM_THREADS: 1
+      MPLBACKEND: Agg
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Upgrade build tooling
+        run: python -m pip install -U pip setuptools wheel
+
+      - name: Clone and install PyQSOFit (engine + bundled templates/dust maps)
+        run: |
+          git clone --depth 1 https://github.com/legolason/PyQSOFit.git external/PyQSOFit
+          python -m pip install -e external/PyQSOFit
+
+      - name: Install AGN-Egent
+        run: python -m pip install -e ".[dev]"
+
+      - name: Console script resolves
+        run: agn-egent --help
+
+      # Analytic unit tests for the science and anomaly measurements. No fitting
+      # engine, no network, no data files -- these do assert, so a failure here
+      # fails the build on its own.
+      - name: Science + anomaly unit tests
+        run: python tests/phase7_science.py
+
+      - name: Phase-0 smoke test
+        run: python tests/phase0_smoke.py 2>&1 | tee phase0.log
+
+      # tests/phase0_smoke.py prints [PASS]/[FAIL]/[WARN] but always exits 0,
+      # so assert on its output here rather than relying on the exit status.
+      - name: Assert smoke test passed
+        run: |
+          grep -q '\[PASS\]' phase0.log || {
+            echo "::error::phase0_smoke.py did not report [PASS]"
+            exit 1
+          }

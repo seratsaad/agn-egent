@@ -7,6 +7,7 @@ reconstructed component arrays (host, continuum, Fe II, broad, narrow).
 from __future__ import annotations
 
 import os
+import re
 
 import matplotlib
 matplotlib.use("Agg")
@@ -21,6 +22,28 @@ def _to_float(x, default=np.nan):
         return float(x)
     except (TypeError, ValueError):
         return default
+
+
+# "OIII5007c" / "OIII5007w" are the core and wing *fitting* components of one
+# physical line. Line-shape science (W80, asymmetry) needs the summed profile,
+# so group them back together. Names with an underscore suffix ("Ha_na",
+# "Hb_br", "HeII4687_na") are already one physical component and pass through.
+_CORE_WING_RE = re.compile(r"^([A-Za-z]+\d+)[cw]$")
+
+
+def physical_line_name(linename: str) -> str:
+    """Map a fitting-component name to its physical line ('OIII5007c' -> 'OIII5007')."""
+    m = _CORE_WING_RE.match(linename)
+    return m.group(1) if m else linename
+
+
+def _group_physical_lines(comp_models: dict) -> dict:
+    """Sum core/wing fitting components into one profile per physical line."""
+    out: dict[str, np.ndarray] = {}
+    for linename, model in comp_models.items():
+        key = physical_line_name(linename)
+        out[key] = out[key] + model if key in out else np.array(model, dtype=float)
+    return out
 
 
 class PyQSOFitBackend:
@@ -99,7 +122,8 @@ class PyQSOFitBackend:
         add("poly", "f_poly_model")
         add("line_total", "f_line_model")
 
-        broad, narrow = self._reconstruct_lines(q, wave)
+        comp_models = self._component_models(q, wave)
+        broad, narrow = self._reconstruct_lines(comp_models, wave)
         if broad is not None:
             comps["broad"] = broad
             comps["narrow"] = narrow
@@ -114,7 +138,7 @@ class PyQSOFitBackend:
         quality = self._quality_dict(q)
         params = self._param_dict(q)
         err = comps.get("err")
-        narrow_lines = self._narrow_line_measurements(q, wave, err, config)
+        narrow_lines = self._narrow_line_measurements(comp_models, wave, err, config)
 
         return DecompositionResult(
             name=spectrum.name, z=spectrum.z, backend=self.name,
@@ -122,9 +146,42 @@ class PyQSOFitBackend:
             continuum=continuum, quality=quality, params=params,
             config=config.to_dict(), figure_path=fig_path,
             narrow_lines=narrow_lines,
+            line_models=_group_physical_lines(comp_models),
         )
 
-    def _narrow_line_measurements(self, q, wave, err, config) -> dict:
+    def _component_models(self, q, wave) -> dict[str, np.ndarray]:
+        """Per fitting-component model, summed over that component's Gaussians.
+
+        Keyed by linename as it appears in the config -- ``Hb_br``, ``OIII5007c``,
+        ``OIII5007w``, ``Ha_na`` ... This is the single place we evaluate the
+        fitted Gaussians; the broad/narrow arrays, the narrow-line diagnostics and
+        the per-line profiles used for line-shape science all derive from it.
+        """
+        names = getattr(q, "gauss_result_name", None)
+        gres = getattr(q, "gauss_result", None)
+        if names is None or gres is None or len(names) == 0:
+            return {}
+        names = np.asarray(names)
+        gres = np.asarray(gres, dtype=float)
+        lookup = {str(n): gres[i] for i, n in enumerate(names)}
+        lnwave = np.log(wave)
+        out: dict[str, np.ndarray] = {}
+        for n in names:
+            n = str(n)
+            if not n.endswith("_scale"):
+                continue
+            base = n[:-len("_scale")]            # e.g. "OIII5007c_1"
+            linename = base.rsplit("_", 1)[0]    # strip the Gaussian index
+            try:
+                pp = [lookup[base + "_scale"], lookup[base + "_centerwave"],
+                      lookup[base + "_sigma"]]
+            except KeyError:
+                continue
+            g = q.Onegauss(lnwave, pp)
+            out[linename] = out[linename] + g if linename in out else g
+        return out
+
+    def _narrow_line_measurements(self, comp_models, wave, err, config) -> dict:
         """Per narrow-line-component peak amplitude + a noise SNR estimate.
 
         SNR is the fitted line's peak amplitude divided by the local 1-sigma
@@ -133,14 +190,8 @@ class PyQSOFitBackend:
         latched onto a noise spike has amplitude ~ the noise (SNR ~ 1), while a
         real forbidden line stands many sigma above it.
         """
-        names = getattr(q, "gauss_result_name", None)
-        gres = getattr(q, "gauss_result", None)
-        if names is None or gres is None or len(names) == 0 or err is None:
+        if not comp_models or err is None:
             return {}
-        names = np.asarray(names)
-        gres = np.asarray(gres, dtype=float)
-        lookup = {n: gres[i] for i, n in enumerate(names)}
-        lnwave = np.log(wave)
 
         # which linenames are velocity/width anchors of a tie group (vindex/windex
         # shared): the first line carrying a given nonzero index is the free one
@@ -166,25 +217,10 @@ class PyQSOFitBackend:
                                     findex_count.get((l.compname, l.findex), 0) > 1)
                    for l in config.lines}
 
-        comp_models: dict[str, np.ndarray] = {}
-        for n in names:
-            if not str(n).endswith("_scale"):
-                continue
-            base = str(n)[:-len("_scale")]          # e.g. "OIII5007c_1"
-            if "_br" in base:
-                continue                             # narrow only
-            linename = base.rsplit("_", 1)[0]        # strip Gaussian index
-            try:
-                pp = [lookup[base + "_scale"], lookup[base + "_centerwave"],
-                      lookup[base + "_sigma"]]
-            except KeyError:
-                continue
-            g = q.Onegauss(lnwave, pp)
-            comp_models.setdefault(linename, np.zeros_like(wave))
-            comp_models[linename] += g
-
         out = {}
         for linename, model in comp_models.items():
+            if "_br" in linename:
+                continue                             # narrow components only
             ipk = int(np.argmax(np.abs(model)))
             amp = float(model[ipk])
             cw = float(wave[ipk])
@@ -202,36 +238,21 @@ class PyQSOFitBackend:
             }
         return out
 
-    def _reconstruct_lines(self, q, wave):
-        """Sum per-Gaussian models into broad/narrow arrays.
+    def _reconstruct_lines(self, comp_models, wave):
+        """Sum the per-component models into broad/narrow arrays.
 
         Broad = component name contains '_br'; everything else is narrow
         (includes '_na' Balmer narrow and forbidden [OIII]/[NII]/[SII]).
         """
-        names = getattr(q, "gauss_result_name", None)
-        gres = getattr(q, "gauss_result", None)
-        if names is None or gres is None or len(names) == 0:
+        if not comp_models:
             return None, None
-        names = np.asarray(names)
-        gres = np.asarray(gres, dtype=float)
-        lookup = {n: gres[i] for i, n in enumerate(names)}
-        lnwave = np.log(wave)
         broad = np.zeros_like(wave)
         narrow = np.zeros_like(wave)
-        for n in names:
-            if not n.endswith("_scale"):
-                continue
-            base = n[:-len("_scale")]
-            try:
-                pp = [lookup[base + "_scale"], lookup[base + "_centerwave"],
-                      lookup[base + "_sigma"]]
-            except KeyError:
-                continue
-            g = q.Onegauss(lnwave, pp)
-            if "_br" in base:
-                broad += g
+        for linename, model in comp_models.items():
+            if "_br" in linename:
+                broad += model
             else:
-                narrow += g
+                narrow += model
         return broad, narrow
 
     def _line_measurements(self, q) -> dict[str, LineMeasurement]:
