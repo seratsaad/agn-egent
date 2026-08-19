@@ -227,8 +227,12 @@ def run_campaign(targets, outdir: str, inspector=None, max_workers: int | None =
 
     # pass the SDSS ids straight through: each worker downloads its own
     # spectrum, so fetching overlaps with fitting instead of preceding it --
-    # at 5000 targets a serial prefetch alone would take hours
-    report = run_batch([t.name for t in targets], inspector=inspector,
+    # at 5000 targets a serial prefetch alone would take hours. The catalog
+    # redshift rides along and overrides the header z (catastrophic pipeline-z
+    # failures otherwise push every optical line out of coverage).
+    sources = [{"sdss": t.name, "z": t.z, "name": t.name} if t.z is not None
+               else t.name for t in targets]
+    report = run_batch(sources, inspector=inspector,
                        max_workers=max_workers, max_iterations=max_iterations,
                        workdir=runs, science=True, resume=resume,
                        progress=verbose)

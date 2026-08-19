@@ -230,6 +230,15 @@ class QsoparConfig:
 
     # -- serialization to PyQSOFit's qsopar.fits -------------------------------
     def write_qsopar(self, workdir: str, filename: str = "qsopar.fits") -> str:
+        if not self.lines:
+            # Every configured line was dropped (coverage guard) -- np.rec.array
+            # on an empty list dies with a bare IndexError deep in numpy, which
+            # tells the survey log nothing. The usual culprit is a catastrophic
+            # catalog/pipeline redshift putting all optical lines outside the
+            # spectrum (seen in the wild: header z=6.1 on a z~0.4 quasar).
+            raise ValueError(
+                "no emission lines to fit: every configured line lies outside "
+                "the spectral coverage -- suspect a wrong redshift")
         os.makedirs(workdir, exist_ok=True)
         out = os.path.join(workdir, filename)
 

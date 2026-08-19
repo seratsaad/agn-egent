@@ -234,6 +234,8 @@ def _json_safe(obj):
 
 
 def _source_name(source) -> str:
+    if isinstance(source, dict):
+        return source.get("name") or source.get("sdss") or "obj"
     name = getattr(source, "name", None)
     if name:
         return name
@@ -249,27 +251,46 @@ _SDSS_ID = re.compile(r"^\d{3,5}-\d{5}-\d{1,4}$")
 def _load_source(source):
     """Turn a batch source into a Spectrum.
 
-    Accepts a Spectrum, a FITS path, or an SDSS "PLATE-MJD-FIBER" id. Ids are
-    downloaded here, *inside the worker*: a survey campaign then overlaps its
-    downloads with its fits instead of fetching thousands of spectra serially
-    up front (and the checkpoint test runs before this, so a resumed campaign
-    re-downloads nothing). Downloads are retried -- on a 40-worker node an
-    occasional dropped connection must not cost a finished object its slot.
+    Accepts a Spectrum, a FITS path, an SDSS "PLATE-MJD-FIBER" id, or a dict
+    ``{"sdss": id, "z": catalog_z, "name": ...}``. Ids are downloaded here,
+    *inside the worker*: a survey campaign then overlaps its downloads with its
+    fits instead of fetching thousands of spectra serially up front (and the
+    checkpoint test runs before this, so a resumed campaign re-downloads
+    nothing). Downloads are retried -- on a 40-worker node an occasional
+    dropped connection must not cost a finished object its slot.
+
+    When the dict form supplies a catalog redshift, it overrides the SDSS
+    header z. The campaign *selected* on the catalog z, and the two disagree
+    exactly for pipeline-z failures (seen: header z=6.1 on a Shen z~0.4
+    quasar, which silently pushes every optical line out of coverage).
     """
     if isinstance(source, Spectrum):
         return source
+    z_override = None
+    if isinstance(source, dict):
+        z_override = source.get("z")
+        name = source.get("name") or source.get("sdss")
+        source = source.get("sdss") or source.get("path")
+    else:
+        name = source if isinstance(source, str) else None
     if isinstance(source, str) and _SDSS_ID.match(source):
         from .catalog import fetch_sdss_spectrum
         plate, mjd, fiber = (int(x) for x in source.split("-"))
-        last = None
+        spec, last = None, None
         for attempt in range(3):
             try:
-                return fetch_sdss_spectrum(plate, mjd, fiber, name=source)
+                spec = fetch_sdss_spectrum(plate, mjd, fiber, name=name or source)
+                break
             except Exception as e:      # transient network/service hiccups
                 last = e
                 time.sleep(2.0 * (attempt + 1))
-        raise last
-    return load_sdss(source)
+        if spec is None:
+            raise last
+    else:
+        spec = load_sdss(source)
+    if z_override is not None and math.isfinite(z_override) and z_override > -0.01:
+        spec.z = float(z_override)
+    return spec
 
 
 def _process_one(source, inspector, config, backend, max_iterations, workdir,
@@ -286,7 +307,12 @@ def _process_one(source, inspector, config, backend, max_iterations, workdir,
     if resume and os.path.exists(ckpt):
         try:
             with open(ckpt) as fh:
-                return BatchRow(**json.load(fh))
+                row = BatchRow(**json.load(fh))
+            # error rows are NOT honored as checkpoints: a transient download
+            # failure (or a since-fixed bug) would otherwise be frozen into the
+            # catalog forever. Resuming retries exactly the failed objects.
+            if row.status != "error":
+                return row
         except Exception:
             pass          # unreadable checkpoint: just redo the object
     try:
