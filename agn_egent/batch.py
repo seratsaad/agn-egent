@@ -294,7 +294,7 @@ def _load_source(source):
 
 
 def _process_one(source, inspector, config, backend, max_iterations, workdir,
-                 science=True, resume=True):
+                 science=True, resume=True, render="final"):
     """Worker: load (if a path), run the agent, return a BatchRow.
 
     Robust to errors -- one bad object must never kill a campaign -- and
@@ -320,7 +320,7 @@ def _process_one(source, inspector, config, backend, max_iterations, workdir,
         objdir = os.path.join(workdir, spec.name or "obj")
         outcome = run_agent(spec, inspector=inspector, config=config,
                             backend=backend, max_iterations=max_iterations,
-                            workdir=objdir, verbose=False)
+                            workdir=objdir, render=render, verbose=False)
         outcome.save(os.path.join(objdir, "provenance.json"))
         row = _outcome_to_row(outcome, science=science)
     except Exception as e:  # one bad object must not kill the batch
@@ -344,7 +344,8 @@ def run_batch(sources,
               workdir: str | None = None,
               science: bool = True,
               resume: bool = True,
-              progress: bool = False) -> BatchReport:
+              progress: bool = False,
+              render: str = "final") -> BatchReport:
     """Decompose + agentically QC a list of spectra.
 
     Parameters
@@ -365,6 +366,11 @@ def run_batch(sources,
         inspector = TriageInspector()
     elif not isinstance(inspector, TriageInspector):
         inspector = TriageInspector(inspector)
+    # a vision-LLM reviewer reads the per-iteration figures; only the plain
+    # rule inspector can safely run without them
+    from .agent.inspector import RuleInspector
+    if render == "final" and not isinstance(inspector.delegate, RuleInspector):
+        render = "all"
     workdir = workdir or os.path.join(RUNS_DIR, "batch")
     os.makedirs(workdir, exist_ok=True)
     sources = list(sources)
@@ -376,7 +382,7 @@ def run_batch(sources,
 
     def args(s):
         return (s, inspector, config, backend, max_iterations, workdir,
-                science, resume)
+                science, resume, render)
 
     def note(row):
         if progress:

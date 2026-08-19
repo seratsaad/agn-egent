@@ -197,6 +197,7 @@ def run_agent(spectrum,
               finalize_mc: bool = False,
               nsamp: int = 25,
               continuum_planner=None,
+              render: str = "all",
               verbose: bool = False) -> AgentOutcome:
     """Run the QC loop until the inspector accepts/rejects or iterations run out.
 
@@ -208,6 +209,12 @@ def run_agent(spectrum,
     runs *before* the QC loop: it pins the power-law continuum from line-/Fe II-
     free windows so the loop starts from a trustworthy continuum (see
     :func:`plan_continuum`).
+
+    ``render`` controls diagnostic figures: ``"all"`` (default) renders one per
+    iteration -- REQUIRED for any vision-LLM inspector, which reads them;
+    ``"final"`` renders only the last (kept) fit's figure, which is all a
+    rule-only survey campaign needs and saves ~1-2 s of matplotlib plus a PNG
+    per iteration at scale; ``"none"`` renders nothing.
     """
     inspector = inspector or RuleInspector()
     config = config or QsoparConfig.sdss_optical_default()
@@ -229,8 +236,10 @@ def run_agent(spectrum,
         result = decompose(spectrum, config=config, backend=backend,
                            make_figure=False, workdir=it_dir)
         verdict = verify(result)
-        fig = render_diagnostic(result, os.path.join(it_dir, "diagnostic.png"),
-                                report=verdict)
+        fig = None
+        if render == "all":
+            fig = render_diagnostic(result, os.path.join(it_dir, "diagnostic.png"),
+                                    report=verdict)
         result.figure_path = fig
 
         decision = inspector.inspect(result, verdict, steps)
@@ -251,6 +260,15 @@ def run_agent(spectrum,
         else:
             status = "accepted"  # no actionable move
             break
+
+    # the kept fit still gets its diagnostic -- galleries and human vetting
+    # need the picture even when the loop itself ran blind
+    if render == "final" and result is not None and steps:
+        it_dir = os.path.join(workdir, f"iter{steps[-1].iteration}")
+        fig = render_diagnostic(result, os.path.join(it_dir, "diagnostic.png"),
+                                report=verdict)
+        result.figure_path = fig
+        steps[-1].figure_path = fig
 
     # finalize accepted fits with Monte-Carlo uncertainties
     if finalize_mc and status == "accepted":
