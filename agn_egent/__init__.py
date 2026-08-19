@@ -46,6 +46,8 @@ from .campaign import (Target, select_sdss_targets, run_campaign, shortlist,
 from .novelty import simbad_lookup, annotate, NoveltyRecord
 from .variability import (compare_outcomes, compare_epochs, compare_line,
                           find_repeat_spectra, VariabilityReport, LineChange)
+# DESI (io_desi) is imported lazily -- it needs the optional sparclclient:
+#   from agn_egent.io_desi import find_desi_qsos, fetch_desi_spectrum
 
 __all__ = [
     "Spectrum",
