@@ -293,17 +293,38 @@ def _load_source(source):
     return spec
 
 
+def checkpoint_path(workdir: str, name: str, pack: bool) -> str:
+    """Where one object's finished row lives.
+
+    Packed mode keeps exactly ONE file per object, sharded into 256 buckets by
+    a name hash (a flat directory of 273k files is miserable on any parallel
+    filesystem, and per-object directories with fit droppings would blow the
+    cluster's inode quota long before its byte quota).
+    """
+    if not pack:
+        return os.path.join(workdir, name, "row.json")
+    import hashlib
+    shard = hashlib.md5(name.encode()).hexdigest()[:2]
+    return os.path.join(workdir, "rows", shard, f"{name}.json")
+
+
 def _process_one(source, inspector, config, backend, max_iterations, workdir,
-                 science=True, resume=True, render="final"):
+                 science=True, resume=True, render="final", pack=False):
     """Worker: load (if a path), run the agent, return a BatchRow.
 
     Robust to errors -- one bad object must never kill a campaign -- and
     checkpointed: a finished object writes ``row.json`` into its own directory
     and is skipped on a later run, so an interrupted survey resumes where it
     stopped instead of re-fitting everything.
+
+    ``pack=True`` is survey mode: the fit runs in a throwaway temp directory
+    and only the sharded row JSON survives. No diagnostics, no provenance
+    files -- anything shortlisted gets refit later with full output, which is
+    cheaper than storing ten files apiece for a quarter-million objects.
     """
-    objdir = os.path.join(workdir, _source_name(source))
-    ckpt = os.path.join(objdir, "row.json")
+    name = _source_name(source)
+    objdir = os.path.join(workdir, name)
+    ckpt = checkpoint_path(workdir, name, pack)
     if resume and os.path.exists(ckpt):
         try:
             with open(ckpt) as fh:
@@ -315,20 +336,33 @@ def _process_one(source, inspector, config, backend, max_iterations, workdir,
                 return row
         except Exception:
             pass          # unreadable checkpoint: just redo the object
+    tmpdir = None
     try:
         spec = _load_source(source)
-        objdir = os.path.join(workdir, spec.name or "obj")
+        name = spec.name or name
+        if pack:
+            import tempfile
+            tmpdir = tempfile.mkdtemp(prefix=f"agn_{name}_")
+            fitdir, render = tmpdir, "none"
+        else:
+            objdir = fitdir = os.path.join(workdir, name)
         outcome = run_agent(spec, inspector=inspector, config=config,
                             backend=backend, max_iterations=max_iterations,
-                            workdir=objdir, render=render, verbose=False)
-        outcome.save(os.path.join(objdir, "provenance.json"))
+                            workdir=fitdir, render=render, verbose=False)
+        if not pack:
+            outcome.save(os.path.join(objdir, "provenance.json"))
         row = _outcome_to_row(outcome, science=science)
     except Exception as e:  # one bad object must not kill the batch
-        row = BatchRow(name=_source_name(source), status="error",
+        row = BatchRow(name=name, status="error",
                        error=f"{type(e).__name__}: {e}")
+    finally:
+        if tmpdir is not None:
+            import shutil
+            shutil.rmtree(tmpdir, ignore_errors=True)
     try:
-        os.makedirs(objdir, exist_ok=True)
-        with open(os.path.join(objdir, "row.json"), "w") as fh:
+        ckpt = checkpoint_path(workdir, row.name, pack)
+        os.makedirs(os.path.dirname(ckpt), exist_ok=True)
+        with open(ckpt, "w") as fh:
             json.dump(_json_safe(asdict(row)), fh)
     except OSError:
         pass              # a failed checkpoint write must not fail the object
@@ -345,7 +379,8 @@ def run_batch(sources,
               science: bool = True,
               resume: bool = True,
               progress: bool = False,
-              render: str = "final") -> BatchReport:
+              render: str = "final",
+              pack: bool = False) -> BatchReport:
     """Decompose + agentically QC a list of spectra.
 
     Parameters
@@ -382,7 +417,7 @@ def run_batch(sources,
 
     def args(s):
         return (s, inspector, config, backend, max_iterations, workdir,
-                science, resume, render)
+                science, resume, render, pack)
 
     def note(row):
         if progress:
