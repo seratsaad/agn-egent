@@ -218,6 +218,39 @@ def test_lopsided_wing_bump_is_not_a_disk_emitter():
     assert not S.broad_profile(r, "Hb").data_double_peaked
 
 
+def test_oversubtracted_trough_is_not_a_disk_emitter():
+    """A negative trough from over-subtraction must not explode the contrast.
+
+    The empirical profile dips below zero wherever continuum/host subtraction
+    overshoots; with an unclipped profile, (weaker - trough)/weaker is
+    unbounded, and a 5k campaign ranked pure subtraction disasters (contrast
+    ~1e8) as its best disk emitters. Clipped, the same object must produce a
+    bounded contrast and fail the peak-significance cut.
+    """
+    lam0 = S.REST_WAVE["Hb"]
+    wave = np.linspace(4000.0, 7000.0, 12000)
+    rng = np.random.default_rng(31)
+
+    def g(amp, v_off, sig):
+        return amp * np.exp(-0.5 * ((wave - lam0 * (1 + v_off / C))
+                                    / (lam0 * sig / C)) ** 2)
+
+    # two barely-positive noise bumps around a deeply negative subtraction hole
+    data = (0.15 * g(1.0, -4000.0, 900.0) + 0.15 * g(1.0, 4000.0, 900.0)
+            - 3.0 * g(1.0, 0.0, 1500.0) + rng.normal(0, 0.05, wave.size))
+    r = DecompositionResult(
+        name="oversub", z=0.1, backend="analytic", rest_wave=wave,
+        components={"err": np.full_like(wave, 0.05), "data": data,
+                    "conti": np.zeros_like(wave), "narrow": np.zeros_like(wave)},
+        lines=_hb_meas(), continuum={}, quality={}, params={},
+        line_models={"Hb_br": np.clip(data, 0, None)})
+    b = S.broad_profile(r, "Hb")
+    if b.data_n_peaks >= 2:
+        assert b.data_peak_contrast <= 1.0 + 1e-9, \
+            f"contrast must be bounded, got {b.data_peak_contrast}"
+    assert not b.data_double_peaked, "a subtraction hole is not a disk profile"
+
+
 def test_data_double_peak_not_fired_by_noise():
     """A noisy single-peaked line must not be called a disk emitter."""
     lam0 = S.REST_WAVE["Hb"]

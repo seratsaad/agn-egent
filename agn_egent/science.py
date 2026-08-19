@@ -92,6 +92,9 @@ DATA_SEARCH_WINDOW_KMS = 12000.0
 # 8900 A, among the worst SDSS sky residuals) produces dips of large relative
 # contrast out of pure noise.
 DATA_DIP_MIN_SIGNIFICANCE = 4.0
+# ... and so must the weaker horn itself, or a subtraction artifact's noise
+# bumps qualify as "peaks" with the dip carved by the artifact.
+DATA_PEAK_MIN_SIGNIFICANCE = 5.0
 # Narrow lines whose imperfectly-subtracted residuals sit inside the broad-line
 # search window; interpolated over before peaks are counted.
 NARROW_MASK_LINES = ("OIII5007", "OIII4959", "HeII4687",
@@ -554,6 +557,14 @@ def _measure_data_peaks(result, complex_name: str, out: BroadProfile,
     vv = v[dsel]
     prof = _smooth_profile(_mask_narrow_residuals(wave, dprof, complex_name),
                            vv, DATA_SMOOTH_KMS)
+    # An emission profile cannot be negative; where the continuum/host/narrow
+    # subtraction overshoots, the residual dips below zero and a trough between
+    # two "peaks" then makes (weaker - trough)/weaker arbitrarily large -- on a
+    # 5k run the top "disk emitters" were subtraction disasters with contrasts
+    # of 1e8. Clipping restores contrast to [0, 1] and dip significance to a
+    # sane scale, and the peak-height significance cut below removes the
+    # near-zero "horns" those objects rode in on.
+    prof = np.clip(prof, 0.0, None)
     peaks = _find_peaks(vv, prof, min_prominence_frac=DATA_PEAK_MIN_PROMINENCE)
     out.data_n_peaks = len(peaks)
     if len(peaks) < 2:
@@ -568,8 +579,10 @@ def _measure_data_peaks(result, complex_name: str, out: BroadProfile,
     contrast = (weaker - trough) / weaker if weaker > 0 else float("nan")
     out.data_peak_separation_kms, out.data_peak_contrast = sep, contrast
 
-    # significance of the dip against the smoothed noise
-    dip_sig = float("nan")
+    # significance of the dip -- and of the weaker horn itself -- against the
+    # smoothed noise. Both matter: a deep dip below a near-zero bump is not a
+    # disk profile, it is noise riding on a subtraction error.
+    dip_sig = peak_sig = float("nan")
     err = result.components.get("err")
     if err is not None:
         e = np.asarray(err, dtype=float)[dsel]
@@ -580,6 +593,7 @@ def _measure_data_peaks(result, complex_name: str, out: BroadProfile,
             sigma_smoothed = float(np.median(e)) / math.sqrt(k)
             if sigma_smoothed > 0:
                 dip_sig = (weaker - trough) / sigma_smoothed
+                peak_sig = weaker / sigma_smoothed
     out.data_dip_significance = dip_sig
 
     out.data_double_peaked = bool(
@@ -590,8 +604,9 @@ def _measure_data_peaks(result, complex_name: str, out: BroadProfile,
         and weaker >= DATA_PEAK_MIN_HEIGHT_RATIO * max(h1, h2)
         # the dip straddles systemic, as a rotating-disk profile must
         and abs(float(vv[itrough])) <= DATA_TROUGH_MAX_OFFSET_KMS
-        # and it must be deeper than the noise can fake
-        and _finite(dip_sig) and dip_sig >= DATA_DIP_MIN_SIGNIFICANCE)
+        # and both the dip and the weaker horn must be real against the noise
+        and _finite(dip_sig) and dip_sig >= DATA_DIP_MIN_SIGNIFICANCE
+        and _finite(peak_sig) and peak_sig >= DATA_PEAK_MIN_SIGNIFICANCE)
 
 
 # ---------------------------------------------------------------------------
