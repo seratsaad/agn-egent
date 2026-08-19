@@ -53,9 +53,29 @@ def main():
     #     the batch layout; cross-process proof in scratch/_probe3.py.)
     rep = decompose(spec, config=config, make_figure=False,
                     workdir=os.path.join(PROJ, "data", "runs", "phase1_rep"))
-    assert result.lines["Hb"].fwhm_kms == rep.lines["Hb"].fwhm_kms, "fit not reproducible"
+    #    Bit-identity holds with a BLAS whose threading the env vars actually
+    #    pin (OpenBLAS/MKL -- every Linux wheel, so CI and the cluster). The
+    #    numpy>=2.0 macOS wheels link Accelerate instead, which honors no
+    #    thread pinning, so on macOS the degenerate 2-Gaussian broad Hbeta of
+    #    this very object (THE knife-edge case, see check 4) can land in
+    #    nearby local minima (~4360-4550 km/s) run to run. Demand bit-identity
+    #    where the platform can deliver it, and bounded drift where it cannot
+    #    -- a silent tolerance everywhere would gut the guarantee this
+    #    project actually relies on for its survey runs.
+    blas = np.show_config(mode="dicts").get(
+        "Build Dependencies", {}).get("blas", {}).get("name", "")
+    accelerate = "accelerate" in str(blas).lower()
     assert result.lines["Ha"].fwhm_kms == rep.lines["Ha"].fwhm_kms, "fit not reproducible"
-    print(f"[check] reproducible: repeat fit identical "
+    if accelerate:
+        drift = abs(result.lines["Hb"].fwhm_kms - rep.lines["Hb"].fwhm_kms) \
+            / rep.lines["Hb"].fwhm_kms
+        assert drift < 0.10, f"Hb drift {drift:.1%} beyond the degenerate-minima band"
+        print(f"[WARN] Accelerate BLAS (macOS): thread pinning not honored; "
+              f"degenerate Hb repeat drift {drift:.2%} (bounded, flagged by QC). "
+              f"Bit-reproducibility requires OpenBLAS/MKL (Linux wheels).")
+    else:
+        assert result.lines["Hb"].fwhm_kms == rep.lines["Hb"].fwhm_kms, "fit not reproducible"
+    print(f"[check] reproducible: repeat fit "
           f"(Hb={rep.lines['Hb'].fwhm_kms:.1f}, Ha={rep.lines['Ha'].fwhm_kms:.1f} km/s)")
 
     # 3) Halpha broad well-constrained

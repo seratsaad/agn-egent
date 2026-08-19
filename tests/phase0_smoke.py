@@ -42,7 +42,7 @@ def build_qsopar(path):
         (4960.30, 'Hb', 4640, 5100, 'OIII4959w', 1, 0.0, 0.0, 1e10, 3e-3, 2.3e-4, 0.004,   0.01,  2, 2, 0, 0.001, 1),
         (5008.24, 'Hb', 4640, 5100, 'OIII5007w', 1, 0.0, 0.0, 1e10, 3e-3, 2.3e-4, 0.004,   0.01,  2, 2, 0, 0.002, 1),
         ],
-        formats='float32, a20, float32, float32, a20, int32, float32, float32, float32, '
+        formats='float32, S20, float32, float32, S20, int32, float32, float32, float32, '
                 'float32, float32, float32, float32, int32, int32, int32, float32, int32',
         names='lambda, compname, minwav, maxwav, linename, ngauss, inisca, minsca, maxsca, '
               'inisig, minsig, maxsig, voff, vindex, windex, findex, fvalue, vary')
@@ -70,7 +70,7 @@ def build_qsopar(path):
         ('conti_a_0',   0.0,   None,  None,  1),
         ('conti_a_1',   0.0,   None,  None,  1),
         ('conti_a_2',   0.0,   None,  None,  1),
-        ], formats='a20, float32, float32, float32, int32',
+        ], formats='S20, float32, float32, float32, int32',
         names='parname, initial, min, max, vary')
     hdu3 = fits.BinTableHDU(data=conti_priors, name='conti_priors')
 

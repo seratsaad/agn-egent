@@ -264,7 +264,11 @@ never removed.
 
 ## Notes and limits
 
-- Pin threads and run one fit per process for reproducibility.
+- Pin threads and run one fit per process for reproducibility. Bit-identical
+  refits require a BLAS that honors thread pinning (OpenBLAS/MKL — all Linux
+  wheels). The numpy ≥ 2.0 **macOS** wheels link Accelerate, which does not,
+  so a *degenerate* fit (the kind the QC flags anyway) can drift a few percent
+  between runs on a Mac; well-constrained quantities are stable everywhere.
 - The continuum is **always a pure power law** (`poly=False`); the polynomial
   term is the biggest source of bad L5100 / M_BH and is off for that reason.
   Fe II, Balmer continuum and host are separate additive components.

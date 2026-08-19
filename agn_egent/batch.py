@@ -15,6 +15,8 @@ import os
 import csv
 import json
 import math
+import re
+import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field, asdict
 
@@ -240,6 +242,36 @@ def _source_name(source) -> str:
     return "obj"
 
 
+# an SDSS spectrum id, "PLATE-MJD-FIBER"
+_SDSS_ID = re.compile(r"^\d{3,5}-\d{5}-\d{1,4}$")
+
+
+def _load_source(source):
+    """Turn a batch source into a Spectrum.
+
+    Accepts a Spectrum, a FITS path, or an SDSS "PLATE-MJD-FIBER" id. Ids are
+    downloaded here, *inside the worker*: a survey campaign then overlaps its
+    downloads with its fits instead of fetching thousands of spectra serially
+    up front (and the checkpoint test runs before this, so a resumed campaign
+    re-downloads nothing). Downloads are retried -- on a 40-worker node an
+    occasional dropped connection must not cost a finished object its slot.
+    """
+    if isinstance(source, Spectrum):
+        return source
+    if isinstance(source, str) and _SDSS_ID.match(source):
+        from .catalog import fetch_sdss_spectrum
+        plate, mjd, fiber = (int(x) for x in source.split("-"))
+        last = None
+        for attempt in range(3):
+            try:
+                return fetch_sdss_spectrum(plate, mjd, fiber, name=source)
+            except Exception as e:      # transient network/service hiccups
+                last = e
+                time.sleep(2.0 * (attempt + 1))
+        raise last
+    return load_sdss(source)
+
+
 def _process_one(source, inspector, config, backend, max_iterations, workdir,
                  science=True, resume=True):
     """Worker: load (if a path), run the agent, return a BatchRow.
@@ -258,7 +290,7 @@ def _process_one(source, inspector, config, backend, max_iterations, workdir,
         except Exception:
             pass          # unreadable checkpoint: just redo the object
     try:
-        spec = source if isinstance(source, Spectrum) else load_sdss(source)
+        spec = _load_source(source)
         objdir = os.path.join(workdir, spec.name or "obj")
         outcome = run_agent(spec, inspector=inspector, config=config,
                             backend=backend, max_iterations=max_iterations,

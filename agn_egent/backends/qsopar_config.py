@@ -238,7 +238,7 @@ class QsoparConfig:
               l.inisca, l.minsca, l.maxsca, l.inisig, l.minsig, l.maxsig,
               l.voff, l.vindex, l.windex, l.findex, l.fvalue, l.vary)
              for l in self.lines],
-            formats=("float32, a20, float32, float32, a20, int32, float32, float32, "
+            formats=("float32, S20, float32, float32, S20, int32, float32, float32, "
                      "float32, float32, float32, float32, float32, int32, int32, "
                      "int32, float32, int32"),
             names=("lambda, compname, minwav, maxwav, linename, ngauss, inisca, "
@@ -255,7 +255,7 @@ class QsoparConfig:
               np.nan if c.vmin is None else c.vmin,
               np.nan if c.vmax is None else c.vmax, c.vary)
              for c in self.conti_priors],
-            formats="a20, float32, float32, float32, int32",
+            formats="S20, float32, float32, float32, int32",
             names="parname, initial, min, max, vary")
         hdu3 = fits.BinTableHDU(data=conti_rows, name="conti_priors")
 

@@ -225,15 +225,13 @@ def run_campaign(targets, outdir: str, inspector=None, max_workers: int | None =
     with open(os.path.join(outdir, "targets.json"), "w") as fh:
         json.dump([t.to_dict() for t in targets], fh, indent=2)
 
-    if verbose:
-        print(f"fetching {len(targets)} spectra ...", flush=True)
-    specs = fetch_targets(targets, verbose=verbose)
-    if verbose:
-        print(f"  got {len(specs)}/{len(targets)}", flush=True)
-
-    report = run_batch(specs, inspector=inspector, max_workers=max_workers,
-                       max_iterations=max_iterations, workdir=runs,
-                       science=True, resume=resume, progress=verbose)
+    # pass the SDSS ids straight through: each worker downloads its own
+    # spectrum, so fetching overlaps with fitting instead of preceding it --
+    # at 5000 targets a serial prefetch alone would take hours
+    report = run_batch([t.name for t in targets], inspector=inspector,
+                       max_workers=max_workers, max_iterations=max_iterations,
+                       workdir=runs, science=True, resume=resume,
+                       progress=verbose)
 
     # carry the catalog coordinates onto the rows so the shortlist is matchable
     by_name = {t.name: t for t in targets}
