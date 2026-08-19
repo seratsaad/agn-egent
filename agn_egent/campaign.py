@@ -117,7 +117,28 @@ def _sci(row, *path, default=None):
     return default if d is None else d
 
 
+# windows that may drive the anomaly ranking: line regions the model fits.
+# "continuum" is a control, and windows for unmodelled lines (an older run
+# scored Mg II, which the optical model cannot fit) must not count.
+_ANOM_WINDOWS = ("Hb", "Ha")
+
+
 def _anom(row):
+    """Anomaly ranking score, recomputed from the per-window scores.
+
+    Using the stored per-window values rather than the stored total makes the
+    ranking self-healing: a catalog produced before a window-list fix (e.g.
+    the Mg II removal) re-ranks correctly with no refitting.
+    """
+    wins = (row.anomaly or {}).get("windows")
+    if wins:
+        scores = [w.get("score") for k, w in wins.items()
+                  if k in _ANOM_WINDOWS and w.get("score") is not None
+                  and math.isfinite(w["score"])]
+        # windows were recorded but no *modelled* line window got a score:
+        # nothing trustworthy to rank on (falling back to the stored total
+        # would resurrect exactly the unmodelled-window contamination)
+        return max(scores) if scores else float("-inf")
     s = (row.anomaly or {}).get("score")
     return s if (s is not None and math.isfinite(s)) else float("-inf")
 

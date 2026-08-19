@@ -41,10 +41,15 @@ from .science import C_KMS, REST_WAVE, _nan_to_none
 # Windows scored independently, as (name, rest-frame lo, hi) in Angstroms.
 # Line regions where a missed component actually means something, plus a
 # continuum control window that should be featureless if the model is right.
+#
+# Only regions the model actually FITS belong here. A Mg II window seemed like
+# a natural addition -- but the optical model contains no Mg II line, so every
+# z >~ 0.3 spectrum has guaranteed coherent residual there, and on a 300-object
+# pilot the "anomaly" ranking degenerated into "has Mg II coverage". Add it
+# back only together with a UV line model.
 DEFAULT_WINDOWS = (
     ("Hb", 4700.0, 5100.0),      # broad Hbeta + [O III]
     ("Ha", 6400.0, 6800.0),      # broad Halpha + [N II] + [S II]
-    ("MgII", 2700.0, 2900.0),    # only covered at higher z
     ("continuum", 5600.0, 6200.0),   # line-free control
 )
 
