@@ -52,6 +52,9 @@ llm = [
     "anthropic>=0.40",
     "openai>=1.30",
 ]
+desi = [
+    "sparclclient>=1.2",  # NOTE: may pin numpy<2; reinstall numpy after
+]
 app = [
     "streamlit>=1.30",
 ]
